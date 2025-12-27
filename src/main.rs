@@ -330,16 +330,23 @@ impl eframe::App for FileExplorerApp {
                 .auto_shrink(true)
                 .show(ui, |ui| {
                     match &self.opened_file {
-                        Some(_) => {
+                        Some(opened_file) => {
                             match &self.opened_file_contents {
                                 Ok(contents) => {
-                                    ui.add(egui::Label::new(contents));
+                                    // Determine the file type for syntax highlighting
+                                    let file_type = determine_file_type(&opened_file.absolute_path);
+                                    egui_extras::syntax_highlighting::code_view_ui(
+                                        ui,
+                                        &egui_extras::syntax_highlighting::CodeTheme::default(),
+                                        contents,
+                                        &String::from(file_type.unwrap_or(String::from("text"))),
+                                    );
+                                    // ui.code(contents);
+                                    // ui.add(egui::Label::new(contents));
                                 }
                                 Err(e) => {
-                                    let error = egui::RichText::new(format!(
-                                        "Error: {}",
-                                        e
-                                    )).color(Color32::RED);
+                                    let error = egui::RichText::new(format!("Error: {}", e))
+                                        .color(Color32::RED);
                                     ui.add(egui::Label::new(error));
                                 }
                             }
@@ -394,4 +401,30 @@ fn read_dir(path: &String) -> Result<Vec<FileNode>, std::io::Error> {
     }
 
     Ok(nodes)
+}
+
+fn determine_file_type(path: &String) -> Option<String> {
+    let extension = Path::new(path).extension()?;
+
+    let returned = match extension.to_str()? {
+        "rs" => Some(String::from("rust")),
+        "js" => Some(String::from("javascript")),
+        "ts" => Some(String::from("typescript")),
+        "html" | "htm" => Some(String::from("html")),
+        "css" => Some(String::from("css")),
+        "xml" => Some(String::from("xml")),
+        "py" => Some(String::from("python")),
+        "txt" => Some(String::from("text")),
+        "md" => Some(String::from("markdown")),
+        "json" => Some(String::from("json")),
+        "toml" => Some(String::from("toml")),
+        "yaml" | "yml" => Some(String::from("yml")),
+        _ => extension.to_str().map(|s| s.to_string()),
+    };
+
+    if returned.is_none() {
+        println!("Could not determine file type for extension: {:?}", extension);
+    }
+
+    returned
 }
