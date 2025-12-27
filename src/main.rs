@@ -1,13 +1,14 @@
 use eframe::egui;
+use egui::Color32;
 use std::{
     fs::{self, canonicalize},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 fn main() -> eframe::Result {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([800.0, 500.0]),
         ..Default::default()
     };
 
@@ -24,7 +25,9 @@ fn main() -> eframe::Result {
 
     let app = MyApp {
         files: nodes,
-        opened_file: opened_file.ok().unwrap(),
+        opened_dir: opened_file.ok().unwrap(),
+        opened_file: None,
+        opened_file_contents: String::from("No File Selected"),
     };
 
     eframe::run_native(
@@ -45,7 +48,6 @@ struct FileNode {
     parent_folder: Option<String>,
     absolute_path: String,
     is_dir: bool,
-    // contents: String,
 }
 
 impl FileNode {
@@ -66,7 +68,6 @@ impl FileNode {
             file_name,
             absolute_path: String::from(absolute_path.to_str().unwrap()),
             parent_folder,
-            // contents: String::from(""),
             is_dir: metadata.is_dir(),
         })
     }
@@ -74,12 +75,15 @@ impl FileNode {
 
 enum Action {
     OpenFile(FileNode),
+    CloseFile,
     GoBack(FileNode),
     None,
 }
 
 struct MyApp {
-    opened_file: FileNode,
+    opened_dir: FileNode,
+    opened_file: Option<FileNode>,
+    opened_file_contents: String,
     files: Vec<FileNode>,
 }
 
@@ -89,16 +93,18 @@ impl MyApp {
             Action::OpenFile(node) => {
                 match self.open_file(node) {
                     Ok(_) => {
-                        println!("Opened file")
+                        println!("Successfully opened file")
                     }
                     Err(e) => {
                         eprintln!("Error: {}", e)
                     }
                 };
             }
+            Action::CloseFile => {
+                self.opened_file = None;
+                self.opened_file_contents.clear();
+            }
             Action::GoBack(opened_file) => {
-                println!("ACTION(back): to {:?}", opened_file);
-
                 match opened_file.parent_folder {
                     Some(parent) => {
                         println!("ACTION(back): parent {:?}", parent);
@@ -125,13 +131,19 @@ impl MyApp {
         let absolute_path = opened_file.absolute_path.clone();
 
         if opened_file.is_dir {
+            self.opened_dir = opened_file;
             self.files = read_dir(&absolute_path)?;
         } else {
-            // let contents = fs::read_to_string(&file.file_name)?;
-            // TODO
-        }
+            self.opened_file = Some(opened_file);
+            let contents = match fs::read_to_string(&file.absolute_path) {
+                Ok(contents) => contents,
+                Err(e) => e.to_string(),
+            };
 
-        self.opened_file = opened_file;
+            println!("Read File: {}", contents);
+
+            self.opened_file_contents = contents;
+        }
 
         Ok(())
     }
@@ -155,18 +167,13 @@ impl eframe::App for MyApp {
                 .size = 24.0;
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        // Left navigation tree
+        egui::SidePanel::left("file_explorer").show(ctx, |ui| {
             ui.heading("File Explorer");
 
             egui::ScrollArea::vertical()
                 .auto_shrink(true)
                 .show(ui, |ui| {
-                    let opened_file = &self.opened_file;
-
-                    ui.add(egui::Label::new(format!(
-                        "Open File: {}",
-                        opened_file.file_name
-                    )));
                     // Render back link for directory
                     let back_label = ui.add(egui::Label::new("../").sense(egui::Sense::click()));
 
@@ -175,14 +182,19 @@ impl eframe::App for MyApp {
                     }
 
                     if back_label.clicked() {
-                        action = Action::GoBack(opened_file.clone());
+                        action = Action::GoBack(self.opened_dir.clone());
                     }
 
                     // Build left side file tree
                     for node in &self.files {
-                        let file_label = ui.add(
-                            egui::Label::new(node.file_name.clone()).sense(egui::Sense::click()),
-                        );
+                        let gui_file_name = if node.is_dir {
+                            format!("{}/", node.file_name)
+                        } else {
+                            String::from(&node.file_name)
+                        };
+
+                        let file_label =
+                            ui.add(egui::Label::new(gui_file_name).sense(egui::Sense::click()));
 
                         if file_label.hovered() {
                             ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
@@ -193,6 +205,43 @@ impl eframe::App for MyApp {
                             action = Action::OpenFile(node.clone());
                         }
                     }
+                });
+        });
+
+        // Main window panel
+        egui::CentralPanel::default().show(ctx, |ui| {
+            //Content that DOES NOT SCROLL
+
+            match &self.opened_file {
+                Some(file) => {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Label::new(format!("Open File: {}", file.file_name)));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let close_button =
+                                ui.add(egui::Button::new("Close").fill(Color32::DARK_RED));
+                            if close_button.clicked() {
+                                action = Action::CloseFile;
+                            }
+                        });
+                    });
+                }
+                None => {
+                    // Draw no header
+                }
+            };
+
+            // Scrolling text content
+            egui::ScrollArea::vertical()
+                .auto_shrink(true)
+                .show(ui, |ui| {
+                    match &self.opened_file {
+                        Some(_) => {
+                            ui.add(egui::Label::new(&self.opened_file_contents));
+                        }
+                        None => {
+                            ui.add(egui::Label::new(String::from("No File Opened")));
+                        }
+                    };
                 });
         });
 
@@ -225,8 +274,6 @@ fn read_dir(path: &String) -> Result<Vec<FileNode>, std::io::Error> {
             }
         }
     }
-
-    println!("ALL NODES: {:?}", nodes);
 
     Ok(nodes)
 }
