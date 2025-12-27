@@ -5,6 +5,10 @@ use std::{
     path::Path,
     process::exit,
 };
+use syntect::{
+    highlighting::ThemeSet,
+    parsing::{SyntaxSet},
+};
 
 /// The Entrypoint of the application. Reads the CWD for files and
 /// constructs a GUI Window with the Application state.
@@ -104,7 +108,7 @@ impl FileNode {
     }
 
     /// Returns a display-friendly name for the file node
-    /// 
+    ///
     /// # Arguments
     /// * `self` - The file node instance
     fn display_name(&self) -> String {
@@ -356,6 +360,10 @@ impl eframe::App for FileExplorerApp {
 
             ui.add(egui::Separator::default().horizontal());
 
+            let ps = SyntaxSet::load_defaults_newlines();
+            let ts = ThemeSet::load_defaults();
+            let syntax = egui_extras::syntax_highlighting::SyntectSettings { ps, ts };
+
             // Scrolling text content
             egui::ScrollArea::vertical()
                 .auto_shrink(true)
@@ -364,12 +372,16 @@ impl eframe::App for FileExplorerApp {
                         Some(_) => match &self.opened_file_contents {
                             Ok(contents) => {
                                 let file_type = &self.opened_file_type.as_ref();
-                                egui_extras::syntax_highlighting::code_view_ui(
-                                    ui,
+                                let layout_job = egui_extras::syntax_highlighting::highlight_with(
+                                    ui.ctx(),
+                                    ui.style(),
                                     &egui_extras::syntax_highlighting::CodeTheme::default(),
                                     contents,
                                     file_type.unwrap_or(&String::from("text")),
+                                    &syntax,
                                 );
+
+                                ui.add(egui::Label::new(layout_job).selectable(true));
                             }
                             Err(e) => {
                                 let error = egui::RichText::new(format!("Error: {}", e))
@@ -444,18 +456,6 @@ fn determine_file_type(path: &String) -> Option<String> {
     let extension = Path::new(path).extension()?;
 
     let returned = match extension.to_str()? {
-        "rs" => Some(String::from("rust")),
-        "js" => Some(String::from("javascript")),
-        "ts" => Some(String::from("typescript")),
-        "html" | "htm" => Some(String::from("html")),
-        "css" => Some(String::from("css")),
-        "xml" => Some(String::from("xml")),
-        "py" => Some(String::from("python")),
-        "txt" => Some(String::from("text")),
-        "md" => Some(String::from("markdown")),
-        "json" => Some(String::from("json")),
-        "toml" => Some(String::from("toml")),
-        "yaml" | "yml" => Some(String::from("yml")),
         _ => extension.to_str().map(|s| s.to_string()),
     };
 
