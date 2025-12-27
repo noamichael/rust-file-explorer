@@ -46,6 +46,8 @@ fn main() -> eframe::Result {
         opened_dir: opened_dir.ok().unwrap(),
         opened_file: None,
         opened_file_contents: Ok(String::from("")),
+        opened_file_type: None,
+        opened_file_line_numbers: None,
     };
 
     eframe::run_native(
@@ -100,6 +102,18 @@ impl FileNode {
             is_dir: metadata.is_dir(),
         })
     }
+
+    /// Returns a display-friendly name for the file node
+    /// 
+    /// # Arguments
+    /// * `self` - The file node instance
+    fn display_name(&self) -> String {
+        if self.is_dir {
+            format!("📂 {}/", self.file_name)
+        } else {
+            format!("📄 {}", self.file_name)
+        }
+    }
 }
 
 // The actions that can occur for the application. During the `update` function,
@@ -119,13 +133,17 @@ enum Action {
 
 // The application state
 struct FileExplorerApp {
-    // The directory currently opened
+    /// The directory currently opened
     opened_dir: FileNode,
-    // The file currently opened for viewing (if present)
+    /// The file currently opened for viewing (if present)
     opened_file: Option<FileNode>,
-    // The contents of the `opened_file`
+    /// The contents of the `opened_file`
     opened_file_contents: Result<String, std::io::Error>,
-    // The children of the `opened_dir`
+    /// The type of the `opened_file` (if present)
+    opened_file_type: Option<String>,
+    /// The numbers lines of the `opened_file`
+    opened_file_line_numbers: Option<String>,
+    /// The children of the `opened_dir`
     files: Vec<FileNode>,
 }
 
@@ -154,6 +172,8 @@ impl FileExplorerApp {
             Action::CloseFile => {
                 self.opened_file = None;
                 self.opened_file_contents = Ok(String::from(""));
+                self.opened_file_line_numbers = None;
+                self.opened_file_type = None;
             }
             // Runs when the top level `../` button is clicked
             Action::GoBack(opened_file) => {
@@ -201,6 +221,21 @@ impl FileExplorerApp {
         } else {
             self.opened_file = Some(opened_file);
             self.opened_file_contents = fs::read_to_string(&file.absolute_path);
+
+            match &self.opened_file_contents {
+                // Ignore errors when reading file contents
+                Err(_) => {}
+                Ok(file_contents) => {
+                    let number_of_lines = file_contents.lines().count();
+                    self.opened_file_line_numbers = Some(
+                        (1..=number_of_lines)
+                            .map(|n| n.to_string())
+                            .collect::<Vec<String>>()
+                            .join("\n"),
+                    );
+                    self.opened_file_type = determine_file_type(&file.absolute_path);
+                }
+            }
         }
 
         Ok(())
@@ -236,7 +271,7 @@ impl eframe::App for FileExplorerApp {
 
         // Left navigation tree
         egui::SidePanel::left("file_explorer").show(ctx, |ui| {
-            ui.heading(&self.opened_dir.file_name);
+            ui.heading(&self.opened_dir.display_name());
             ui.add(egui::Separator::default().horizontal());
 
             // Draw the file tree
@@ -261,11 +296,7 @@ impl eframe::App for FileExplorerApp {
 
                     // Build left side file tree
                     for node in &self.files {
-                        let gui_file_name = if node.is_dir {
-                            format!("{}/", node.file_name)
-                        } else {
-                            String::from(&node.file_name)
-                        };
+                        let gui_file_name = node.display_name();
 
                         let mut file_name_text = egui::RichText::new(gui_file_name);
 
@@ -330,27 +361,22 @@ impl eframe::App for FileExplorerApp {
                 .auto_shrink(true)
                 .show(ui, |ui| {
                     match &self.opened_file {
-                        Some(opened_file) => {
-                            match &self.opened_file_contents {
-                                Ok(contents) => {
-                                    // Determine the file type for syntax highlighting
-                                    let file_type = determine_file_type(&opened_file.absolute_path);
-                                    egui_extras::syntax_highlighting::code_view_ui(
-                                        ui,
-                                        &egui_extras::syntax_highlighting::CodeTheme::default(),
-                                        contents,
-                                        &String::from(file_type.unwrap_or(String::from("text"))),
-                                    );
-                                    // ui.code(contents);
-                                    // ui.add(egui::Label::new(contents));
-                                }
-                                Err(e) => {
-                                    let error = egui::RichText::new(format!("Error: {}", e))
-                                        .color(Color32::RED);
-                                    ui.add(egui::Label::new(error));
-                                }
+                        Some(_) => match &self.opened_file_contents {
+                            Ok(contents) => {
+                                let file_type = &self.opened_file_type.as_ref();
+                                egui_extras::syntax_highlighting::code_view_ui(
+                                    ui,
+                                    &egui_extras::syntax_highlighting::CodeTheme::default(),
+                                    contents,
+                                    file_type.unwrap_or(&String::from("text")),
+                                );
                             }
-                        }
+                            Err(e) => {
+                                let error = egui::RichText::new(format!("Error: {}", e))
+                                    .color(Color32::RED);
+                                ui.add(egui::Label::new(error));
+                            }
+                        },
                         None => {
                             ui.add(egui::Label::new(String::from(
                                 "Please select a file from the menu",
@@ -400,6 +426,17 @@ fn read_dir(path: &String) -> Result<Vec<FileNode>, std::io::Error> {
         }
     }
 
+    // Sort directories first, then files, both alphabetically
+    nodes.sort_by(|a, b| {
+        if a.is_dir && !b.is_dir {
+            std::cmp::Ordering::Less
+        } else if !a.is_dir && b.is_dir {
+            std::cmp::Ordering::Greater
+        } else {
+            a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase())
+        }
+    });
+
     Ok(nodes)
 }
 
@@ -423,7 +460,10 @@ fn determine_file_type(path: &String) -> Option<String> {
     };
 
     if returned.is_none() {
-        println!("Could not determine file type for extension: {:?}", extension);
+        println!(
+            "Could not determine file type for extension: {:?}",
+            extension
+        );
     }
 
     returned
