@@ -2,7 +2,8 @@ use eframe::egui;
 use egui::Color32;
 use std::{
     fs::{self, canonicalize},
-    path::Path, process::exit,
+    path::Path,
+    process::exit,
 };
 
 /// The Entrypoint of the application. Reads the CWD for files and
@@ -44,7 +45,7 @@ fn main() -> eframe::Result {
         files: nodes,
         opened_dir: opened_dir.ok().unwrap(),
         opened_file: None,
-        opened_file_contents: String::from(""),
+        opened_file_contents: Ok(String::from("")),
     };
 
     eframe::run_native(
@@ -81,7 +82,7 @@ impl FileNode {
     /// * `path` - The path to read
     fn from_relative_path(path: &String) -> Result<FileNode, std::io::Error> {
         let current_path = Path::new(path);
-        let absolute_path = canonicalize(current_path).expect("Could not find path");
+        let absolute_path = canonicalize(current_path)?;
         let metadata = fs::metadata(path)?;
         let file_name = match current_path.file_name() {
             Some(p) => String::from(p.to_str().unwrap()),
@@ -123,7 +124,7 @@ struct FileExplorerApp {
     // The file currently opened for viewing (if present)
     opened_file: Option<FileNode>,
     // The contents of the `opened_file`
-    opened_file_contents: String,
+    opened_file_contents: Result<String, std::io::Error>,
     // The children of the `opened_dir`
     files: Vec<FileNode>,
 }
@@ -152,7 +153,7 @@ impl FileExplorerApp {
             // Runs when the close file button is clicked
             Action::CloseFile => {
                 self.opened_file = None;
-                self.opened_file_contents.clear();
+                self.opened_file_contents = Ok(String::from(""));
             }
             // Runs when the top level `../` button is clicked
             Action::GoBack(opened_file) => {
@@ -188,16 +189,18 @@ impl FileExplorerApp {
         let absolute_path = opened_file.absolute_path.clone();
 
         if opened_file.is_dir {
-            self.opened_dir = opened_file;
-            self.files = read_dir(&absolute_path)?;
+            match read_dir(&absolute_path) {
+                Err(e) => {
+                    eprintln!("Could not open file: {}", e);
+                }
+                Ok(v) => {
+                    self.opened_dir = opened_file;
+                    self.files = v;
+                }
+            }
         } else {
             self.opened_file = Some(opened_file);
-            let contents = match fs::read_to_string(&file.absolute_path) {
-                Ok(contents) => contents,
-                Err(e) => e.to_string(),
-            };
-
-            self.opened_file_contents = contents;
+            self.opened_file_contents = fs::read_to_string(&file.absolute_path);
         }
 
         Ok(())
@@ -240,11 +243,12 @@ impl eframe::App for FileExplorerApp {
             egui::ScrollArea::vertical()
                 .auto_shrink(true)
                 .show(ui, |ui| {
-
                     // Render back link for directory
                     if self.opened_dir.absolute_path != "/" {
                         let back_label =
                             ui.add(egui::Label::new("../").sense(egui::Sense::click()));
+
+                        ui.add(egui::Separator::default().horizontal());
 
                         if back_label.hovered() {
                             ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
@@ -282,6 +286,8 @@ impl eframe::App for FileExplorerApp {
 
                         let file_label =
                             ui.add(egui::Label::new(file_name_text).sense(egui::Sense::click()));
+
+                        ui.add(egui::Separator::default().horizontal());
 
                         if file_label.hovered() {
                             ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
@@ -325,7 +331,18 @@ impl eframe::App for FileExplorerApp {
                 .show(ui, |ui| {
                     match &self.opened_file {
                         Some(_) => {
-                            ui.add(egui::Label::new(&self.opened_file_contents));
+                            match &self.opened_file_contents {
+                                Ok(contents) => {
+                                    ui.add(egui::Label::new(contents));
+                                }
+                                Err(e) => {
+                                    let error = egui::RichText::new(format!(
+                                        "Error: {}",
+                                        e
+                                    )).color(Color32::RED);
+                                    ui.add(egui::Label::new(error));
+                                }
+                            }
                         }
                         None => {
                             ui.add(egui::Label::new(String::from(
@@ -365,8 +382,13 @@ fn read_dir(path: &String) -> Result<Vec<FileNode>, std::io::Error> {
         match FileNode::from_relative_path(&String::from(entry.to_str().unwrap())) {
             Ok(node) => nodes.push(node),
             Err(e) => {
-                eprintln!("error: {}", e);
-                return Ok(nodes);
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    // Skip files that cannot be accessed due to permission issues
+                    eprintln!("read_dir: permission denied for file: {}", entry.display());
+                    continue;
+                }
+                eprintln!("read_dir: could not read file: {}, {}", e, entry.display());
+                continue;
             }
         }
     }
