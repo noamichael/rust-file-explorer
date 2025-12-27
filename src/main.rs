@@ -2,17 +2,33 @@ use eframe::egui;
 use egui::Color32;
 use std::{
     fs::{self, canonicalize},
-    path::Path,
+    path::Path, process::exit,
 };
 
+/// The Entrypoint of the application. Reads the CWD for files and
+/// constructs a GUI Window with the Application state.
 fn main() -> eframe::Result {
-    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+    // Initialize logging
+    env_logger::init();
+
+    // Launch options for the app
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([800.0, 500.0]),
         ..Default::default()
     };
 
-    let nodes: Vec<FileNode> = match read_dir(&String::from("./")) {
+    // This will convert the relative path to the absolute path
+    let cwd = canonicalize(Path::new("./"));
+
+    if cwd.is_err() {
+        eprintln!("Could not open CWD: {}", cwd.err().unwrap());
+        exit(1);
+    }
+
+    let cwd_absolute_path = &String::from(cwd.unwrap().to_str().unwrap());
+
+    // Read the Current Working Directory to build the initial Tree Menu
+    let nodes: Vec<FileNode> = match read_dir(cwd_absolute_path) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -21,36 +37,48 @@ fn main() -> eframe::Result {
         }
     };
 
-    let opened_file = FileNode::from_relative_path(&String::from("./"));
+    // A referencee to the opened directory
+    let opened_dir = FileNode::from_relative_path(cwd_absolute_path);
 
-    let app = MyApp {
+    let app = FileExplorerApp {
         files: nodes,
-        opened_dir: opened_file.ok().unwrap(),
+        opened_dir: opened_dir.ok().unwrap(),
         opened_file: None,
-        opened_file_contents: String::from("No File Selected"),
+        opened_file_contents: String::from(""),
     };
 
     eframe::run_native(
-        "Application",
+        "Rust File Explorer",
         options,
         Box::new(|cc| {
             // This gives us image support:
             egui_extras::install_image_loaders(&cc.egui_ctx);
 
-            Ok(Box::<MyApp>::new(app))
+            Ok(Box::<FileExplorerApp>::new(app))
         }),
     )
 }
 
+/// Represents a node in the file menu
 #[derive(Clone, Debug)]
 struct FileNode {
+    /// The name of the file (excluding the path)
     file_name: String,
-    parent_folder: Option<String>,
+    /// The absolute path to this file, including the file name
     absolute_path: String,
+    /// The parent folder of this file (Empty for the root folder)
+    parent_folder: Option<String>,
+    /// A flag to indicate if this node is a directory
     is_dir: bool,
 }
 
+/// File Node methods
 impl FileNode {
+    /// Constructs a file node from a relaltive path
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to read
     fn from_relative_path(path: &String) -> Result<FileNode, std::io::Error> {
         let current_path = Path::new(path);
         let absolute_path = canonicalize(current_path).expect("Could not find path");
@@ -73,23 +101,44 @@ impl FileNode {
     }
 }
 
+// The actions that can occur for the application. During the `update` function,
+// no app state mutations should occur. Instead, the `update` function returns
+// the action (if any) that took place during that frame and the `post_update`
+// function will apply the state changes.
 enum Action {
+    // An action for when a file was clicked in the menu
     OpenFile(FileNode),
+    // An action for when the "close file" button was click
     CloseFile,
+    // An action for when the user attempts to navigate up a directory
     GoBack(FileNode),
+    // An action for if no user interaction happened for this frame
     None,
 }
 
-struct MyApp {
+// The application state
+struct FileExplorerApp {
+    // The directory currently opened
     opened_dir: FileNode,
+    // The file currently opened for viewing (if present)
     opened_file: Option<FileNode>,
+    // The contents of the `opened_file`
     opened_file_contents: String,
+    // The children of the `opened_dir`
     files: Vec<FileNode>,
 }
 
-impl MyApp {
+/// The methods of the FileExplorerApp
+impl FileExplorerApp {
+    /// Processes the action that took place during the [`FileExplorerApp::update`] function
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - the application instance
+    /// * `action` - the [`Action`] that occurred during the last frame
     fn post_update(&mut self, action: Action) -> Result<(), std::io::Error> {
         match action {
+            // Runs when a file node in the tree is clicked
             Action::OpenFile(node) => {
                 match self.open_file(node) {
                     Ok(_) => {
@@ -100,14 +149,15 @@ impl MyApp {
                     }
                 };
             }
+            // Runs when the close file button is clicked
             Action::CloseFile => {
                 self.opened_file = None;
                 self.opened_file_contents.clear();
             }
+            // Runs when the top level `../` button is clicked
             Action::GoBack(opened_file) => {
                 match opened_file.parent_folder {
                     Some(parent) => {
-                        println!("ACTION(back): parent {:?}", parent);
                         let parent_node = FileNode::from_relative_path(&parent);
                         let _ = self.open_file(parent_node.expect("Could not read parent file"));
                     }
@@ -117,6 +167,7 @@ impl MyApp {
                     }
                 }
             }
+            // The action that is omitted if the user did nothing during the last frame
             Action::None => {
                 // Do nothing
             }
@@ -125,6 +176,12 @@ impl MyApp {
         Ok(())
     }
 
+    /// Opens a file or directory. This will set `opened_file` or `opened_dir` based on the file type.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - The application instancee
+    /// * `file` - The file that should be opened from the file tree. Can be a `File` or `Directory` node.
     fn open_file(&mut self, file: FileNode) -> Result<(), std::io::Error> {
         println!("Attempting to open, {:?}", file);
         let opened_file = file.clone();
@@ -140,8 +197,6 @@ impl MyApp {
                 Err(e) => e.to_string(),
             };
 
-            println!("Read File: {}", contents);
-
             self.opened_file_contents = contents;
         }
 
@@ -149,8 +204,17 @@ impl MyApp {
     }
 }
 
-impl eframe::App for MyApp {
+impl eframe::App for FileExplorerApp {
+    /// Draws the UI for the given frame. This is called for each frame.
+    /// This function should not mutate any state so as to avoid borrow issues.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - The application instance
+    /// * `ctx` - The drawing context
+    /// * `_frame` - The frame being drawn (unused)
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // The action performed during this frame.
         let mut action = Action::None;
 
         // Set Styles
@@ -169,20 +233,26 @@ impl eframe::App for MyApp {
 
         // Left navigation tree
         egui::SidePanel::left("file_explorer").show(ctx, |ui| {
-            ui.heading("File Explorer");
+            ui.heading(&self.opened_dir.file_name);
+            ui.add(egui::Separator::default().horizontal());
 
+            // Draw the file tree
             egui::ScrollArea::vertical()
                 .auto_shrink(true)
                 .show(ui, |ui| {
+
                     // Render back link for directory
-                    let back_label = ui.add(egui::Label::new("../").sense(egui::Sense::click()));
+                    if self.opened_dir.absolute_path != "/" {
+                        let back_label =
+                            ui.add(egui::Label::new("../").sense(egui::Sense::click()));
 
-                    if back_label.hovered() {
-                        ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
-                    }
+                        if back_label.hovered() {
+                            ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                        }
 
-                    if back_label.clicked() {
-                        action = Action::GoBack(self.opened_dir.clone());
+                        if back_label.clicked() {
+                            action = Action::GoBack(self.opened_dir.clone());
+                        }
                     }
 
                     // Build left side file tree
@@ -193,8 +263,25 @@ impl eframe::App for MyApp {
                             String::from(&node.file_name)
                         };
 
+                        let mut file_name_text = egui::RichText::new(gui_file_name);
+
+                        // Draw selected file
+                        match &self.opened_file {
+                            Some(opened_file) => {
+                                if opened_file.absolute_path == node.absolute_path {
+                                    file_name_text = file_name_text
+                                        .underline()
+                                        .background_color(Color32::LIGHT_BLUE)
+                                        .color(Color32::BLACK);
+                                }
+                            }
+                            None => {
+                                // do nothing
+                            }
+                        }
+
                         let file_label =
-                            ui.add(egui::Label::new(gui_file_name).sense(egui::Sense::click()));
+                            ui.add(egui::Label::new(file_name_text).sense(egui::Sense::click()));
 
                         if file_label.hovered() {
                             ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
@@ -215,7 +302,7 @@ impl eframe::App for MyApp {
             match &self.opened_file {
                 Some(file) => {
                     ui.horizontal(|ui| {
-                        ui.add(egui::Label::new(format!("Open File: {}", file.file_name)));
+                        ui.heading(format!("{}", file.file_name));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let close_button =
                                 ui.add(egui::Button::new("Close").fill(Color32::DARK_RED));
@@ -226,9 +313,11 @@ impl eframe::App for MyApp {
                     });
                 }
                 None => {
-                    // Draw no header
+                    ui.heading(String::from("No File Opened"));
                 }
             };
+
+            ui.add(egui::Separator::default().horizontal());
 
             // Scrolling text content
             egui::ScrollArea::vertical()
@@ -239,7 +328,9 @@ impl eframe::App for MyApp {
                             ui.add(egui::Label::new(&self.opened_file_contents));
                         }
                         None => {
-                            ui.add(egui::Label::new(String::from("No File Opened")));
+                            ui.add(egui::Label::new(String::from(
+                                "Please select a file from the menu",
+                            )));
                         }
                     };
                 });
@@ -249,6 +340,11 @@ impl eframe::App for MyApp {
     }
 }
 
+/// Returns a list of all the FileNodes for the given path
+///
+/// # Arguments
+///
+/// * `path` - The path to read
 fn read_dir(path: &String) -> Result<Vec<FileNode>, std::io::Error> {
     let mut nodes: Vec<FileNode> = Vec::new();
 
