@@ -1,4 +1,4 @@
-use crate::app::FileExplorerApp;
+use crate::app::{FileExplorerApp, Filters};
 use crate::fs_utils::{FileNode, read_dir};
 use eframe::egui;
 use std::{fs::canonicalize, path::Path, process::exit};
@@ -54,6 +54,9 @@ fn main() -> eframe::Result {
         opened_file_contents: Ok(String::from("")),
         opened_file_type: None,
         opened_file_line_numbers: None,
+        filters: Filters {
+            file_name_search: String::from(""),
+        },
     };
 
     eframe::run_native(
