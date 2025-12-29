@@ -32,7 +32,7 @@ impl eframe::App for FileExplorerApp {
 
         // Left navigation tree
         egui::SidePanel::left("file_explorer").show(ctx, |ui| {
-            ui.heading(&self.opened_dir.display_name());
+            ui.heading(self.opened_dir.display_name());
             ui.add(egui::Separator::default().horizontal());
 
             // Draw the file tree
@@ -100,7 +100,7 @@ impl eframe::App for FileExplorerApp {
             match &self.opened_file {
                 Some(file) => {
                     ui.horizontal(|ui| {
-                        ui.heading(format!("{}", file.file_name));
+                        ui.heading(&file.file_name);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let close_button =
                                 ui.add(egui::Button::new("Close").fill(Color32::DARK_RED));

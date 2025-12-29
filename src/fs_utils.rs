@@ -31,10 +31,8 @@ impl FileNode {
             Some(p) => String::from(p.to_str().unwrap()),
             None => String::from(path),
         };
-        let parent_folder = match absolute_path.parent() {
-            Some(p) => Some(String::from(p.to_str().unwrap())),
-            None => None,
-        };
+
+        let parent_folder = absolute_path.parent().map(|p| String::from(p.to_str().unwrap()));
 
         Ok(FileNode {
             file_name,
@@ -115,16 +113,5 @@ pub fn read_dir(path: &String) -> Result<Vec<FileNode>, std::io::Error> {
 pub fn determine_file_type(path: &String) -> Option<String> {
     let extension = Path::new(path).extension()?;
 
-    let returned = match extension.to_str()? {
-        _ => extension.to_str().map(|s| s.to_string()),
-    };
-
-    if returned.is_none() {
-        println!(
-            "Could not determine file type for extension: {:?}",
-            extension
-        );
-    }
-
-    returned
+    extension.to_str().map(|s| s.to_string())
 }
