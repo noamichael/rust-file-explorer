@@ -15,12 +15,14 @@ pub struct FileExplorerApp {
     pub opened_file_line_numbers: Option<String>,
     /// The children of the `opened_dir`
     pub files: Vec<FileNode>,
+    /// The search filter for the file tree
+    pub filters: Filters,
 }
 
-// The actions that can occur for the application. During the `update` function,
-// no app state mutations should occur. Instead, the `update` function returns
-// the action (if any) that took place during that frame and the `post_update`
-// function will apply the state changes.
+/// The actions that can occur for the application. During the `update` function,
+/// no app state mutations should occur. Instead, the `update` function returns
+/// the action (if any) that took place during that frame and the `post_update`
+/// function will apply the state changes.
 pub enum Action {
     // An action for when a file was clicked in the menu
     OpenFile(FileNode),
@@ -28,8 +30,16 @@ pub enum Action {
     CloseFile,
     // An action for when the user attempts to navigate up a directory
     GoBack(FileNode),
+    // Search for a file by name
+    SearchByFilename(String),
     // An action for if no user interaction happened for this frame
     None,
+}
+
+/// The Filters used to search the opened file tree
+pub struct Filters {
+    /// The text contents of the search
+    pub file_name_search: String,
 }
 
 /// The methods of the FileExplorerApp
@@ -73,10 +83,19 @@ impl FileExplorerApp {
                     }
                 }
             }
-            // The action that is omitted if the user did nothing during the last frame
-            Action::None => {
-                // Do nothing
+            // Runs when we search for a file by name
+            Action::SearchByFilename(search_file_name) => {
+                println!("Searching for [{}]", search_file_name);
+
+                for file in &mut self.files {
+                    file.matches_filters = file
+                        .file_name
+                        .to_lowercase()
+                        .starts_with(&search_file_name.trim().to_lowercase());
+                }
             }
+            // The action that is omitted if the user did nothing during the last frame
+            Action::None => (),
         }
 
         Ok(())
@@ -90,10 +109,22 @@ impl FileExplorerApp {
     /// * `file` - The file that should be opened from the file tree. Can be a `File` or `Directory` node.
     fn open_file(&mut self, file: FileNode) -> Result<(), std::io::Error> {
         println!("Attempting to open, {:?}", file);
+
+        match &self.opened_file {
+            Some(f) => {
+                if f.absolute_path == file.absolute_path {
+                    println!("File is already opened - skipping");
+                    return Ok(());
+                }
+            }
+            None => (),
+        }
+
         let opened_file = file.clone();
         let absolute_path = opened_file.absolute_path.clone();
 
         if opened_file.is_dir {
+            self.filters.file_name_search.clear();
             match read_dir(&absolute_path) {
                 Err(e) => {
                     eprintln!("Could not open file: {}", e);

@@ -33,6 +33,25 @@ impl eframe::App for FileExplorerApp {
         // Left navigation tree
         egui::SidePanel::left("file_explorer").show(ctx, |ui| {
             ui.heading(self.opened_dir.display_name());
+
+            ui.horizontal(|ui| {
+                // Add text search box
+                let file_search = ui.add(
+                    egui::TextEdit::singleline(&mut self.filters.file_name_search)
+                        .hint_text("Search Files"),
+                );
+
+                // On enter key press of the search bar, trigger search action.
+                //
+                // TODO: Improve this by triggering search after the user is done typing. This would
+                // typically be done by "debouncing" the input event. What this means is that we don't want
+                // to trigger the search action until the user "pauses" (or stops) typing. This requires
+                // being able to schedule "cancelable" tasks, probably via a channel and background thread.
+                if file_search.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    action = Action::SearchByFilename(self.filters.file_name_search.clone());
+                }
+            });
+
             ui.add(egui::Separator::default().horizontal());
 
             // Draw the file tree
@@ -57,6 +76,10 @@ impl eframe::App for FileExplorerApp {
 
                     // Build left side file tree
                     for node in &self.files {
+                        // Skip rendering nodes that don't match the filters
+                        if !node.matches_filters {
+                            continue;
+                        }
                         let gui_file_name = node.display_name();
 
                         let mut file_name_text = egui::RichText::new(gui_file_name);

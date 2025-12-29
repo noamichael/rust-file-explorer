@@ -14,6 +14,9 @@ pub struct FileNode {
     pub parent_folder: Option<String>,
     /// A flag to indicate if this node is a directory
     pub is_dir: bool,
+    /// A flag to indicate if this FileNode should be rendered
+    /// as it matches the file filters
+    pub matches_filters: bool,
 }
 
 /// File Node methods
@@ -32,13 +35,16 @@ impl FileNode {
             None => String::from(path),
         };
 
-        let parent_folder = absolute_path.parent().map(|p| String::from(p.to_str().unwrap()));
+        let parent_folder = absolute_path
+            .parent()
+            .map(|p| String::from(p.to_str().unwrap()));
 
         Ok(FileNode {
             file_name,
             absolute_path: String::from(absolute_path.to_str().unwrap()),
             parent_folder,
             is_dir: metadata.is_dir(),
+            matches_filters: true,
         })
     }
 
