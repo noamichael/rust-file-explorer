@@ -1,0 +1,128 @@
+use crate::fs_utils::{FileNode, determine_file_type, read_dir};
+use std::fs;
+
+// The application state
+pub struct FileExplorerApp {
+    /// The directory currently opened
+    pub opened_dir: FileNode,
+    /// The file currently opened for viewing (if present)
+    pub opened_file: Option<FileNode>,
+    /// The contents of the `opened_file`
+    pub opened_file_contents: Result<String, std::io::Error>,
+    /// The type of the `opened_file` (if present)
+    pub opened_file_type: Option<String>,
+    /// The numbers lines of the `opened_file`
+    pub opened_file_line_numbers: Option<String>,
+    /// The children of the `opened_dir`
+    pub files: Vec<FileNode>,
+}
+
+// The actions that can occur for the application. During the `update` function,
+// no app state mutations should occur. Instead, the `update` function returns
+// the action (if any) that took place during that frame and the `post_update`
+// function will apply the state changes.
+pub enum Action {
+    // An action for when a file was clicked in the menu
+    OpenFile(FileNode),
+    // An action for when the "close file" button was click
+    CloseFile,
+    // An action for when the user attempts to navigate up a directory
+    GoBack(FileNode),
+    // An action for if no user interaction happened for this frame
+    None,
+}
+
+/// The methods of the FileExplorerApp
+impl FileExplorerApp {
+    /// Processes the action that took place during the [`FileExplorerApp::update`] function
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - the application instance
+    /// * `action` - the [`Action`] that occurred during the last frame
+    pub fn post_update(&mut self, action: Action) -> Result<(), std::io::Error> {
+        match action {
+            // Runs when a file node in the tree is clicked
+            Action::OpenFile(node) => {
+                match self.open_file(node) {
+                    Ok(_) => {
+                        println!("Successfully opened file")
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e)
+                    }
+                };
+            }
+            // Runs when the close file button is clicked
+            Action::CloseFile => {
+                self.opened_file = None;
+                self.opened_file_contents = Ok(String::from(""));
+                self.opened_file_line_numbers = None;
+                self.opened_file_type = None;
+            }
+            // Runs when the top level `../` button is clicked
+            Action::GoBack(opened_file) => {
+                match opened_file.parent_folder {
+                    Some(parent) => {
+                        let parent_node = FileNode::from_relative_path(&parent);
+                        let _ = self.open_file(parent_node.expect("Could not read parent file"));
+                    }
+                    None => {
+                        // Do nothing
+                        println!("Could not find parent folder...")
+                    }
+                }
+            }
+            // The action that is omitted if the user did nothing during the last frame
+            Action::None => {
+                // Do nothing
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Opens a file or directory. This will set `opened_file` or `opened_dir` based on the file type.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - The application instancee
+    /// * `file` - The file that should be opened from the file tree. Can be a `File` or `Directory` node.
+    fn open_file(&mut self, file: FileNode) -> Result<(), std::io::Error> {
+        println!("Attempting to open, {:?}", file);
+        let opened_file = file.clone();
+        let absolute_path = opened_file.absolute_path.clone();
+
+        if opened_file.is_dir {
+            match read_dir(&absolute_path) {
+                Err(e) => {
+                    eprintln!("Could not open file: {}", e);
+                }
+                Ok(v) => {
+                    self.opened_dir = opened_file;
+                    self.files = v;
+                }
+            }
+        } else {
+            self.opened_file = Some(opened_file);
+            self.opened_file_contents = fs::read_to_string(&file.absolute_path);
+
+            match &self.opened_file_contents {
+                // Ignore errors when reading file contents
+                Err(_) => {}
+                Ok(file_contents) => {
+                    let number_of_lines = file_contents.lines().count();
+                    self.opened_file_line_numbers = Some(
+                        (1..=number_of_lines)
+                            .map(|n| n.to_string())
+                            .collect::<Vec<String>>()
+                            .join("\n"),
+                    );
+                    self.opened_file_type = determine_file_type(&file.absolute_path);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
