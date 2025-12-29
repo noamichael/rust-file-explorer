@@ -91,7 +91,7 @@ impl FileExplorerApp {
                     file.matches_filters = file
                         .file_name
                         .to_lowercase()
-                        .starts_with(&search_file_name.trim().to_lowercase());
+                        .contains(&search_file_name.trim().to_lowercase());
                 }
             }
             // The action that is omitted if the user did nothing during the last frame

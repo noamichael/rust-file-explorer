@@ -55,65 +55,78 @@ impl eframe::App for FileExplorerApp {
             ui.add(egui::Separator::default().horizontal());
 
             // Draw the file tree
-            egui::ScrollArea::vertical()
-                .auto_shrink(true)
-                .show(ui, |ui| {
-                    // Render back link for directory
-                    if self.opened_dir.absolute_path != "/" {
-                        let back_label =
-                            ui.add(egui::Label::new("../").sense(egui::Sense::click()));
+            egui::ScrollArea::both().auto_shrink(true).show(ui, |ui| {
+                // Render back link for directory
+                if self.opened_dir.absolute_path != "/" {
+                    let back_label = ui.add(egui::Label::new("../").sense(egui::Sense::click()));
 
-                        ui.add(egui::Separator::default().horizontal());
+                    ui.add(egui::Separator::default().horizontal());
 
-                        if back_label.hovered() {
-                            ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                    if back_label.hovered() {
+                        ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                    }
+
+                    if back_label.clicked() {
+                        action = Action::GoBack(self.opened_dir.clone());
+                    }
+                }
+
+                // Build left side file tree
+                for node in &self.files {
+                    // Skip rendering nodes that don't match the filters
+                    if !node.matches_filters {
+                        continue;
+                    }
+                    let gui_file_name = node.display_name();
+
+                    let mut file_name_text = egui::RichText::new(gui_file_name);
+
+                    // Draw selected file
+                    match &self.opened_file {
+                        Some(opened_file) => {
+                            if opened_file.absolute_path == node.absolute_path {
+                                file_name_text = file_name_text
+                                    .underline()
+                                    .background_color(Color32::LIGHT_BLUE)
+                                    .color(Color32::BLACK);
+                            }
                         }
-
-                        if back_label.clicked() {
-                            action = Action::GoBack(self.opened_dir.clone());
+                        None => {
+                            // do nothing
                         }
                     }
 
-                    // Build left side file tree
-                    for node in &self.files {
-                        // Skip rendering nodes that don't match the filters
-                        if !node.matches_filters {
-                            continue;
-                        }
-                        let gui_file_name = node.display_name();
+                    // Add frame for file node
+                    ui.push_id(&node.file_name, |ui| {
+                        let file_node_frame = egui::Frame::default().show(ui, |ui| {
+                            let _file_label = ui.add(
+                                egui::Label::new(file_name_text)
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            );
 
-                        let mut file_name_text = egui::RichText::new(gui_file_name);
+                            ui.add(egui::Separator::default().horizontal());
+                        });
 
-                        // Draw selected file
-                        match &self.opened_file {
-                            Some(opened_file) => {
-                                if opened_file.absolute_path == node.absolute_path {
-                                    file_name_text = file_name_text
-                                        .underline()
-                                        .background_color(Color32::LIGHT_BLUE)
-                                        .color(Color32::BLACK);
-                                }
-                            }
-                            None => {
-                                // do nothing
-                            }
-                        }
+                        let frame_rect = file_node_frame.response.rect;
 
-                        let file_label =
-                            ui.add(egui::Label::new(file_name_text).sense(egui::Sense::click()));
+                        // Sense clicks on the background of the *parent* ui, using the frame's rectangle for bounds
+                        let bg_response = ui.interact(
+                            frame_rect,
+                            ui.id().with(&node.file_name),
+                            egui::Sense::click(),
+                        );
 
-                        ui.add(egui::Separator::default().horizontal());
-
-                        if file_label.hovered() {
-                            ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
-                        }
-
-                        if file_label.clicked() {
+                        if bg_response.clicked() {
                             println!("CLICKED {}", node.file_name);
                             action = Action::OpenFile(node.clone());
                         }
-                    }
-                });
+
+                        if bg_response.hovered() {
+                            ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                        }
+                    });
+                }
+            });
         });
 
         // Main window panel
@@ -125,8 +138,13 @@ impl eframe::App for FileExplorerApp {
                     ui.horizontal(|ui| {
                         ui.heading(&file.file_name);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let close_button =
-                                ui.add(egui::Button::new("Close").fill(Color32::DARK_RED));
+                            let close_button = ui.add(
+                                egui::Button::new(
+                                    egui::RichText::new("Close").color(Color32::WHITE), // Set text color to red
+                                )
+                                .fill(Color32::DARK_RED),
+                            );
+
                             if close_button.clicked() {
                                 action = Action::CloseFile;
                             }
@@ -152,10 +170,17 @@ impl eframe::App for FileExplorerApp {
                         Some(_) => match &self.opened_file_contents {
                             Ok(contents) => {
                                 let file_type = &self.opened_file_type.as_ref();
+
+                                let code_theme = if ctx.style().visuals.dark_mode {
+                                    egui_extras::syntax_highlighting::CodeTheme::dark(12.0)
+                                } else {
+                                    egui_extras::syntax_highlighting::CodeTheme::light(12.0)
+                                };
+
                                 let layout_job = egui_extras::syntax_highlighting::highlight_with(
                                     ui.ctx(),
                                     ui.style(),
-                                    &egui_extras::syntax_highlighting::CodeTheme::default(),
+                                    &code_theme,
                                     contents,
                                     file_type.unwrap_or(&String::from("text")),
                                     &syntax,
