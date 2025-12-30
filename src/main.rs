@@ -1,7 +1,5 @@
-use crate::app::{FileExplorerApp, Filters};
-use crate::fs_utils::{FileNode, read_dir};
+use crate::app::{FileExplorerApp};
 use eframe::egui;
-use std::{fs::canonicalize, path::Path, process::exit};
 
 // Import modules for this application
 
@@ -24,40 +22,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    // This will convert the relative path to the absolute path
-    let cwd = canonicalize(Path::new("./"));
-
-    if cwd.is_err() {
-        eprintln!("Could not open CWD: {}", cwd.err().unwrap());
-        exit(1);
-    }
-
-    let cwd_absolute_path = &String::from(cwd.unwrap().to_str().unwrap());
-
-    // Read the Current Working Directory to build the initial Tree Menu
-    let nodes: Vec<FileNode> = match read_dir(cwd_absolute_path) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            let s: Vec<FileNode> = Vec::new();
-            s
-        }
-    };
-
-    // A referencee to the opened directory
-    let opened_dir = FileNode::from_relative_path(cwd_absolute_path);
-
-    let app = FileExplorerApp {
-        files: nodes,
-        opened_dir: opened_dir.ok().unwrap(),
-        opened_file: None,
-        opened_file_contents: Ok(String::from("")),
-        opened_file_type: None,
-        opened_file_line_numbers: None,
-        filters: Filters {
-            file_name_search: String::from(""),
-        },
-    };
+    let app = FileExplorerApp::default();
 
     eframe::run_native(
         "Rust File Explorer",

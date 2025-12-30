@@ -67,12 +67,12 @@ impl eframe::App for FileExplorerApp {
                     }
 
                     if back_label.clicked() {
-                        action = Action::GoBack(self.opened_dir.clone());
+                        action = Action::GoBack();
                     }
                 }
 
                 // Build left side file tree
-                for node in &self.files {
+                for (index, node) in self.files.iter().enumerate() {
                     // Skip rendering nodes that don't match the filters
                     if !node.matches_filters {
                         continue;
@@ -118,7 +118,7 @@ impl eframe::App for FileExplorerApp {
 
                         if bg_response.clicked() {
                             println!("CLICKED {}", node.file_name);
-                            action = Action::OpenFile(node.clone());
+                            action = Action::OpenFile(index);
                         }
 
                         if bg_response.hovered() {

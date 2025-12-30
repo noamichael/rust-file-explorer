@@ -1,7 +1,12 @@
 use crate::fs_utils::{FileNode, determine_file_type, read_dir};
-use std::fs;
+use std::{
+    fs::{self, canonicalize},
+    path::Path,
+    process::exit,
+};
 
-// The application state
+/// The application state
+#[derive(Debug)]
 pub struct FileExplorerApp {
     /// The directory currently opened
     pub opened_dir: FileNode,
@@ -23,13 +28,14 @@ pub struct FileExplorerApp {
 /// no app state mutations should occur. Instead, the `update` function returns
 /// the action (if any) that took place during that frame and the `post_update`
 /// function will apply the state changes.
+#[derive(Debug, Clone)]
 pub enum Action {
     // An action for when a file was clicked in the menu
-    OpenFile(FileNode),
+    OpenFile(usize),
     // An action for when the "close file" button was click
     CloseFile,
     // An action for when the user attempts to navigate up a directory
-    GoBack(FileNode),
+    GoBack(),
     // Search for a file by name
     SearchByFilename(String),
     // An action for if no user interaction happened for this frame
@@ -37,9 +43,49 @@ pub enum Action {
 }
 
 /// The Filters used to search the opened file tree
+#[derive(Debug)]
 pub struct Filters {
     /// The text contents of the search
     pub file_name_search: String,
+}
+
+/// The default methods
+impl Default for FileExplorerApp {
+    fn default() -> Self {
+        let cwd = canonicalize(Path::new("./"));
+
+        if cwd.is_err() {
+            eprintln!("Could not open CWD: {}", cwd.err().unwrap());
+            exit(1);
+        }
+
+        let cwd_absolute_path = &String::from(cwd.unwrap().to_str().unwrap());
+
+        // Read the Current Working Directory to build the initial Tree Menu
+        let nodes: Vec<FileNode> = match read_dir(cwd_absolute_path) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                let s: Vec<FileNode> = Vec::new();
+                s
+            }
+        };
+
+        // A referencee to the opened directory
+        let opened_dir = FileNode::from_relative_path(cwd_absolute_path);
+
+        FileExplorerApp {
+            files: nodes,
+            opened_dir: opened_dir.ok().unwrap(),
+            opened_file: None,
+            opened_file_contents: Ok(String::from("")),
+            opened_file_type: None,
+            opened_file_line_numbers: None,
+            filters: Filters {
+                file_name_search: String::from(""),
+            },
+        }
+    }
 }
 
 /// The methods of the FileExplorerApp
@@ -51,10 +97,11 @@ impl FileExplorerApp {
     /// * `self` - the application instance
     /// * `action` - the [`Action`] that occurred during the last frame
     pub fn post_update(&mut self, action: Action) -> Result<(), std::io::Error> {
+        let opened_dir = &self.opened_dir;
         match action {
             // Runs when a file node in the tree is clicked
             Action::OpenFile(node) => {
-                match self.open_file(node) {
+                match self.open_child_file(node) {
                     Ok(_) => {
                         println!("Successfully opened file")
                     }
@@ -71,10 +118,10 @@ impl FileExplorerApp {
                 self.opened_file_type = None;
             }
             // Runs when the top level `../` button is clicked
-            Action::GoBack(opened_file) => {
-                match opened_file.parent_folder {
+            Action::GoBack() => {
+                match &opened_dir.parent_folder {
                     Some(parent) => {
-                        let parent_node = FileNode::from_relative_path(&parent);
+                        let parent_node = FileNode::from_relative_path(parent);
                         let _ = self.open_file(parent_node.expect("Could not read parent file"));
                     }
                     None => {
@@ -99,6 +146,11 @@ impl FileExplorerApp {
         }
 
         Ok(())
+    }
+
+    fn open_child_file(&mut self, index: usize) -> Result<(), std::io::Error> {
+        let file = &self.files[index];
+        self.open_file(file.clone())
     }
 
     /// Opens a file or directory. This will set `opened_file` or `opened_dir` based on the file type.
