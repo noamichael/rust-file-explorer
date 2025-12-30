@@ -16,8 +16,8 @@ pub struct FileExplorerApp {
     pub opened_file_contents: Result<String, std::io::Error>,
     /// The type of the `opened_file` (if present)
     pub opened_file_type: Option<String>,
-    /// The numbers lines of the `opened_file`
-    pub opened_file_line_numbers: Option<String>,
+    /// The lines of the `opened_file`
+    pub opened_file_lines: Result<Vec<String>, std::io::Error>,
     /// The children of the `opened_dir`
     pub files: Vec<FileNode>,
     /// The search filter for the file tree
@@ -80,7 +80,7 @@ impl Default for FileExplorerApp {
             opened_file: None,
             opened_file_contents: Ok(String::from("")),
             opened_file_type: None,
-            opened_file_line_numbers: None,
+            opened_file_lines: Ok(Vec::new()),
             filters: Filters {
                 file_name_search: String::from(""),
             },
@@ -114,7 +114,7 @@ impl FileExplorerApp {
             Action::CloseFile => {
                 self.opened_file = None;
                 self.opened_file_contents = Ok(String::from(""));
-                self.opened_file_line_numbers = None;
+                self.opened_file_lines = Ok(Vec::new());
                 self.opened_file_type = None;
             }
             // Runs when the top level `../` button is clicked
@@ -162,14 +162,11 @@ impl FileExplorerApp {
     fn open_file(&mut self, file: FileNode) -> Result<(), std::io::Error> {
         println!("Attempting to open, {:?}", file);
 
-        match &self.opened_file {
-            Some(f) => {
-                if f.absolute_path == file.absolute_path {
-                    println!("File is already opened - skipping");
-                    return Ok(());
-                }
-            }
-            None => (),
+        if let Some(f) = &self.opened_file
+            && f.absolute_path == file.absolute_path
+        {
+            println!("File is already opened - skipping");
+            return Ok(());
         }
 
         let opened_file = file.clone();
@@ -194,13 +191,8 @@ impl FileExplorerApp {
                 // Ignore errors when reading file contents
                 Err(_) => {}
                 Ok(file_contents) => {
-                    let number_of_lines = file_contents.lines().count();
-                    self.opened_file_line_numbers = Some(
-                        (1..=number_of_lines)
-                            .map(|n| n.to_string())
-                            .collect::<Vec<String>>()
-                            .join("\n"),
-                    );
+                    self.opened_file_lines =
+                        Ok(file_contents.lines().map(|s| s.to_string()).collect());
                     self.opened_file_type = determine_file_type(&file.absolute_path);
                 }
             }

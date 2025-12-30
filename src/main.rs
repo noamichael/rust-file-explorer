@@ -1,4 +1,4 @@
-use crate::app::{FileExplorerApp};
+use crate::app::FileExplorerApp;
 use eframe::egui;
 
 // Import modules for this application

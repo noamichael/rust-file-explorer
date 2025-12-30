@@ -1783,7 +1783,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -3490,7 +3490,6 @@ dependencies = [
  "env_logger",
  "iced",
  "iced_aw",
- "iced_fonts",
  "syntect",
 ]
 
