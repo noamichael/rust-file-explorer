@@ -1,10 +1,15 @@
 use crate::app::{Action, FileExplorerApp};
 use egui::Color32;
 
+use iced::widget::scrollable;
 use iced::{
-    Color, Font, Length,
+    Background, Color, Font, Length,
     font::Weight,
-    widget::{button, column, row, scrollable, space, text},
+    widget::{
+        button, column, container, row,
+        scrollable::{Direction, Scrollbar},
+        space, text,
+    },
 };
 use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 
@@ -214,29 +219,37 @@ impl eframe::App for FileExplorerApp {
     }
 }
 
+const HEADING_FONT_SIZE: f32 = 24.0;
+
 impl FileExplorerApp {
     pub fn update(&mut self, action: Action) {
         let _ = self.post_update(action);
     }
     pub fn view(&self) -> iced::Element<'_, Action> {
         let selected_file_theme = |selected: bool| {
-            move |_theme: &iced::Theme, status: button::Status| {
-                let selected_color = Color::from_rgb(0.2, 0.5, 0.8);
-                iced::widget::button::Style {
-                    background: Some(iced::Background::Color(match status {
-                        button::Status::Active => {
-                            if selected {
-                                selected_color
-                            } else {
-                                Color::from_rgb(0.1, 0.6, 0.9) // Lighter blue when active
-                            }
-                        }
-                        button::Status::Hovered => selected_color,
-                        button::Status::Pressed | button::Status::Disabled => {
-                            Color::from_rgb(0.5, 0.5, 0.5)
-                        } // Grey when pressed/disabled
-                    })),
-                    ..Default::default()
+            move |theme: &iced::Theme, status: button::Status| {
+                // Get the base theme color
+                let palette = theme.extended_palette();
+                // If the file is selected, use the primary button style
+                if selected {
+                    button::primary(theme, status)
+                } else {
+                    // If not selected, use a custom style
+                    match status {
+                        // Normal state - do not add any backgroun and use default text
+                        button::Status::Active | button::Status::Pressed => button::Style {
+                            background: Some(Background::Color(palette.background.base.color)),
+                            text_color: Color::from_rgb(
+                                palette.background.base.text.r,
+                                palette.background.base.text.g,
+                                palette.background.base.text.b,
+                            ),
+                            ..button::Style::default()
+                        },
+                        // Hovered and disabled states use the primary style
+                        button::Status::Hovered => button::primary(theme, status),
+                        button::Status::Disabled => button::primary(theme, status),
+                    }
                 }
             }
         };
@@ -245,6 +258,7 @@ impl FileExplorerApp {
             button(row![text("📂 ../").shaping(text::Shaping::Advanced)])
                 .on_press(Action::GoBack())
                 .style(selected_file_theme(false))
+                .width(Length::Fill)
                 .into();
 
         let mut file_nodes: Vec<iced::Element<Action>> = Vec::new();
@@ -261,6 +275,7 @@ impl FileExplorerApp {
                 button(file_name_row)
                     .style(selected_file_theme(is_selected))
                     .on_press(Action::OpenFile(index))
+                    .width(Length::Fill)
                     .into(),
             );
         }
@@ -282,29 +297,69 @@ impl FileExplorerApp {
                         );
                     }
 
+                    // The main content column
                     column![
-                        text(&opened_file.file_name).size(16.0).font(Font {
-                            weight: Weight::Bold,
-                            ..Font::default()
-                        }),
+                        row![
+                            text(&opened_file.file_name)
+                                .size(HEADING_FONT_SIZE)
+                                .font(Font {
+                                    weight: Weight::Bold,
+                                    ..Font::default()
+                                }),
+                            space::horizontal().width(Length::Fill),
+                            container(
+                                button("Close")
+                                    .on_press(Action::CloseFile)
+                                    .style(button::secondary)
+                            )
+                            .padding(10.0)
+                        ],
                         scrollable(iced::widget::Column::from_vec(text_lines))
                             .width(Length::Fill)
                             .height(Length::Fill)
                     ]
+                    .spacing(20.0)
                 }
                 Err(e) => {
                     column![text(format!("Error: {}", e))]
                 }
             },
             None => {
-                column![text("No File Opened")]
+                column![
+                    text("Please select a file from the menu")
+                        .size(24.0)
+                        .width(Length::Fill)
+                        .center()
+                ]
             }
         };
 
         row![
-            column![back_button, iced::widget::Column::from_vec(file_nodes)],
-            content.width(Length::Fill)
+            container(
+                column![
+                    scrollable(row![
+                        text(self.opened_dir.display_name())
+                            .size(HEADING_FONT_SIZE)
+                            .font(Font {
+                                weight: Weight::Bold,
+                                ..Font::default()
+                            })
+                            .wrapping(text::Wrapping::None),
+                    ])
+                    .direction(Direction::Horizontal(
+                        Scrollbar::new().width(5).margin(0).scroller_width(5)
+                    )),
+                    scrollable(column![
+                        back_button,
+                        iced::widget::Column::from_vec(file_nodes).width(Length::Fill)
+                    ])
+                ]
+                .width(Length::Fill),
+            )
+            .width(Length::FillPortion(1)),
+            content.width(Length::FillPortion(4)),
         ]
+        .spacing(20.0)
         .into()
     }
 }
