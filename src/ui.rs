@@ -1,5 +1,13 @@
+use std::fmt::Error;
+
 use crate::app::{Action, FileExplorerApp};
 use egui::Color32;
+
+use iced::{
+    Color, Length, widget::{button, column, row, scrollable, text}
+};
+use iced_fonts::fontawesome;
+
 use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 
 /// Implement the eframe App trait (interface) for the FileExplorerApp
@@ -205,5 +213,83 @@ impl eframe::App for FileExplorerApp {
 
         // Handle any actions that occurred during this frame
         let _ = self.post_update(action);
+    }
+}
+
+impl FileExplorerApp {
+    pub fn update(&mut self, action: Action) {
+        let _ = self.post_update(action);
+    }
+    pub fn view(&self) -> iced::Element<Action> {
+        let file_node_theme = |_theme: &iced::Theme, status: button::Status| {
+            iced::widget::button::Style {
+                background: Some(iced::Background::Color(match status {
+                    button::Status::Active => Color::from_rgb(0.1, 0.5, 0.8), // Blue when active
+                    button::Status::Hovered => Color::from_rgb(0.1, 0.6, 0.9), // Lighter blue when hovered
+                    button::Status::Pressed | button::Status::Disabled => {
+                        Color::from_rgb(0.5, 0.5, 0.5)
+                    } // Grey when pressed/disabled
+                })),
+                text_color: Color::WHITE,
+                border: iced::Border {
+                    radius: 4.0.into(),
+                    width: 1.0,
+                    color: Color::BLACK,
+                },
+                shadow: iced::Shadow::default(),
+                snap: false, // snap field might be present depending on version
+            }
+        };
+
+        let back_button: iced::Element<Action> = button(row![fontawesome::folder(), text("../")])
+            .on_press(Action::GoBack())
+            .style(file_node_theme)
+            .into();
+
+        let mut file_nodes: Vec<iced::Element<Action>> = Vec::new();
+
+        for (index, f) in self.files.iter().enumerate() {
+            let file_name_row = if f.is_dir {
+                row![fontawesome::folder(), text(format!("{}/", f.file_name))]
+            } else {
+                row![fontawesome::file_arrow_up(), text(&f.file_name)]
+            };
+
+            file_nodes.push(
+                button(file_name_row)
+                    .style(file_node_theme)
+                    .on_press(Action::OpenFile(index))
+                    .into(),
+            );
+        }
+
+        let content =  match &self.opened_file {
+            Some(_) => match &self.opened_file_contents {
+                Ok(contents) => {
+                    column![
+                        text("TODO").size(16.0),
+                        scrollable(
+                            text(contents).font(iced::Font::MONOSPACE)
+                        )
+                    ]
+                }
+                Err(e) => {
+                    column![
+                        text(format!("Error: {}", e))
+                    ]
+                }
+            },
+            None => {
+                column![
+                    text("No File Opened")
+                ]
+            }
+        };
+
+        row![
+            column![back_button, iced::widget::Column::from_vec(file_nodes)],
+            content.width(Length::Fill)
+        ]
+        .into()
     }
 }
