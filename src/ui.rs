@@ -330,8 +330,9 @@ impl FileExplorerApp {
 
                     let highlighted = iced::widget::Column::with_children(
                         LinesWithEndings::from(&contents)
-                            .map(|line| {
-                                h.highlight_line(line, &ps)
+                            .enumerate()
+                            .map(|(index, line)| {
+                                let spans = h.highlight_line(line, &ps)
                                     .unwrap()
                                     .iter()
                                     .map(|(style, text)| {
@@ -344,9 +345,15 @@ impl FileExplorerApp {
                                             .font(Font::MONOSPACE)
                                             .into()
                                     })
-                                    .collect::<Vec<Span<String, Font>>>()
+                                    .collect::<Vec<Span<String, Font>>>();
+
+                                let rich = Rich::with_spans(spans);
+                                row![
+                                    text(format!("{:4}", index + 1)).font(Font::MONOSPACE),
+                                    space::vertical().width(Length::Fixed(15.0)),
+                                    rich
+                                ]
                             })
-                            .map(|spans| Rich::with_spans(spans))
                             .map(iced::Element::from)
                             .collect::<Vec<_>>(),
                     );
