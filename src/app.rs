@@ -16,8 +16,6 @@ pub struct FileExplorerApp {
     pub opened_file_contents: Result<String, std::io::Error>,
     /// The type of the `opened_file` (if present)
     pub opened_file_type: Option<String>,
-    /// The lines of the `opened_file`
-    pub opened_file_lines: Result<Vec<String>, std::io::Error>,
     /// The children of the `opened_dir`
     pub files: Vec<FileNode>,
     /// The search filter for the file tree
@@ -39,9 +37,7 @@ pub enum Action {
     // An action for when the user attempts to navigate up a directory
     GoBack(),
     // Search for a file by name
-    SearchByFilename(String),
-    // An action for if no user interaction happened for this frame
-    None,
+    SearchByFilename(String)
 }
 
 /// The Filters used to search the opened file tree
@@ -89,7 +85,6 @@ impl Default for FileExplorerApp {
             opened_file: None,
             opened_file_contents: Ok(String::from("")),
             opened_file_type: None,
-            opened_file_lines: Ok(Vec::new()),
             filters: Filters {
                 file_name_search: String::from(""),
             },
@@ -124,7 +119,6 @@ impl FileExplorerApp {
             Action::CloseFile => {
                 self.opened_file = None;
                 self.opened_file_contents = Ok(String::from(""));
-                self.opened_file_lines = Ok(Vec::new());
                 self.opened_file_type = None;
             }
             // Runs when the top level `../` button is clicked
@@ -151,8 +145,6 @@ impl FileExplorerApp {
                         .contains(&search_file_name.trim().to_lowercase());
                 }
             }
-            // The action that is omitted if the user did nothing during the last frame
-            Action::None => (),
         }
 
         Ok(())
@@ -200,9 +192,7 @@ impl FileExplorerApp {
             match &self.opened_file_contents {
                 // Ignore errors when reading file contents
                 Err(_) => {}
-                Ok(file_contents) => {
-                    self.opened_file_lines =
-                        Ok(file_contents.lines().map(|s| s.to_string()).collect());
+                Ok(_) => {
                     self.opened_file_type = determine_file_type(&file.absolute_path);
                 }
             }
