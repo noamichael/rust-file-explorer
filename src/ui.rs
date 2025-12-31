@@ -321,7 +321,11 @@ impl FileExplorerApp {
                         .find_syntax_by_extension(&self.opened_file_type.clone().unwrap_or(String::from("txt")))
                         .or(ps.find_syntax_by_extension("txt"))
                         .unwrap();
-                    let theme = &ts.themes["base16-ocean.dark"]; // A popular dark theme
+                    let theme = match &self.system_color_mode {
+                        dark_light::Mode::Dark => &ts.themes["base16-ocean.dark"],
+                        dark_light::Mode::Light => &ts.themes["Solarized (light)"],
+                        dark_light::Mode::Unspecified => &ts.themes["Solarized (light)"],
+                    };
                     let mut h = HighlightLines::new(syntax, theme);
 
                     let highlighted = iced::widget::Column::with_children(

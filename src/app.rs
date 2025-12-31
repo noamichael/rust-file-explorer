@@ -22,6 +22,8 @@ pub struct FileExplorerApp {
     pub files: Vec<FileNode>,
     /// The search filter for the file tree
     pub filters: Filters,
+    /// Whether the application is in dark mode
+    pub system_color_mode: dark_light::Mode
 }
 
 /// The actions that can occur for the application. During the `update` function,
@@ -74,6 +76,13 @@ impl Default for FileExplorerApp {
         // A referencee to the opened directory
         let opened_dir = FileNode::from_relative_path(cwd_absolute_path);
 
+        let system_color_mode = match dark_light::detect() {
+            Ok(mode) => mode,
+            Err(_) => dark_light::Mode::Light,
+        };
+
+        println!("Detected system color mode: {:?}", system_color_mode);
+
         FileExplorerApp {
             files: nodes,
             opened_dir: opened_dir.ok().unwrap(),
@@ -84,6 +93,7 @@ impl Default for FileExplorerApp {
             filters: Filters {
                 file_name_search: String::from(""),
             },
+            system_color_mode,
         }
     }
 }
