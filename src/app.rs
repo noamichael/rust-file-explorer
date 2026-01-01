@@ -1,8 +1,11 @@
+use iced::Task;
+
 use crate::fs_utils::{FileNode, determine_file_type, read_dir};
 use std::{
     fs::{self, canonicalize},
     path::Path,
     process::exit,
+    time::Duration,
 };
 
 /// The application state
@@ -21,7 +24,7 @@ pub struct FileExplorerApp {
     /// The search filter for the file tree
     pub filters: Filters,
     /// Whether the application is in dark mode
-    pub system_color_mode: dark_light::Mode
+    pub system_color_mode: dark_light::Mode,
 }
 
 /// The actions that can occur for the application. During the `update` function,
@@ -36,8 +39,10 @@ pub enum Action {
     CloseFile,
     // An action for when the user attempts to navigate up a directory
     GoBack(),
+    // Schedules a debounced search for a file by name. Calls SearchByFilename after delay
+    DebouncedSearch(String),
     // Search for a file by name
-    SearchByFilename(String)
+    SearchByFilename(String),
 }
 
 /// The Filters used to search the opened file tree
@@ -45,6 +50,8 @@ pub enum Action {
 pub struct Filters {
     /// The text contents of the search
     pub file_name_search: String,
+    /// The abort handler for the current operation
+    pub file_filter_handle: Option<iced::task::Handle>,
 }
 
 /// The default methods
@@ -87,6 +94,7 @@ impl Default for FileExplorerApp {
             opened_file_type: None,
             filters: Filters {
                 file_name_search: String::from(""),
+                file_filter_handle: None,
             },
             system_color_mode,
         }
@@ -95,13 +103,13 @@ impl Default for FileExplorerApp {
 
 /// The methods of the FileExplorerApp
 impl FileExplorerApp {
-    /// Processes the action that took place during the [`FileExplorerApp::update`] function
+    /// Processes the action that took place during the [`FileExplorerApp::view`] function
     ///
     /// # Arguments
     ///
     /// * `self` - the application instance
     /// * `action` - the [`Action`] that occurred during the last frame
-    pub fn post_update(&mut self, action: Action) -> Result<(), std::io::Error> {
+    pub fn post_update(&mut self, action: Action) -> Task<Action> {
         let opened_dir = &self.opened_dir;
         match action {
             // Runs when a file node in the tree is clicked
@@ -113,13 +121,15 @@ impl FileExplorerApp {
                     Err(e) => {
                         eprintln!("Error: {}", e)
                     }
-                };
+                }
+                Task::none()
             }
             // Runs when the close file button is clicked
             Action::CloseFile => {
                 self.opened_file = None;
                 self.opened_file_contents = Ok(String::from(""));
                 self.opened_file_type = None;
+                Task::none()
             }
             // Runs when the top level `../` button is clicked
             Action::GoBack() => {
@@ -133,8 +143,35 @@ impl FileExplorerApp {
                         println!("Could not find parent folder...")
                     }
                 }
+                Task::none()
             }
             // Runs when we search for a file by name
+            Action::DebouncedSearch(search_file_name) => {
+
+                // Store the search in the state
+                self.filters.file_name_search = search_file_name.clone();
+
+                // Abort any existing filter operation
+                let _ = self.filters
+                    .file_filter_handle
+                    .as_ref()
+                    .map(|abort_handler| abort_handler.abort());
+
+                // Create a task that performs the search after a delay
+                let handler =
+                    Task::perform(tokio::time::sleep(Duration::from_millis(500)), move |_| {
+                        Action::SearchByFilename(search_file_name)
+                    });
+
+                // Split handler into task_handler and abort_handler
+                let (task_handler, abort_handler) = handler.abortable();
+
+                // store the abort_handler
+                self.filters.file_filter_handle = Some(abort_handler);
+
+                // Return the task_handler for Iced to execute later
+                task_handler
+            }
             Action::SearchByFilename(search_file_name) => {
                 println!("Searching for [{}]", search_file_name);
 
@@ -144,10 +181,10 @@ impl FileExplorerApp {
                         .to_lowercase()
                         .contains(&search_file_name.trim().to_lowercase());
                 }
+
+                Task::none()
             }
         }
-
-        Ok(())
     }
 
     fn open_child_file(&mut self, index: usize) -> Result<(), std::io::Error> {

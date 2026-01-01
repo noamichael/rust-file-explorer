@@ -1,6 +1,7 @@
 use crate::app::{Action, FileExplorerApp};
 
-use iced::widget::scrollable;
+use iced::Task;
+use iced::widget::{scrollable, text_input};
 use iced::widget::text::{Rich, Span};
 use iced::{
     Background, Color, Font, Length,
@@ -16,9 +17,10 @@ const HEADING_FONT_SIZE: f32 = 32.0;
 const FILE_NAME_FONT_SIZE: f32 = 24.0;
 
 impl FileExplorerApp {
-    pub fn update(&mut self, action: Action) {
-        let _ = self.post_update(action);
+    pub fn update(&mut self, action: Action) -> Task<Action> {
+        self.post_update(action)
     }
+
     pub fn view(&self) -> iced::Element<'_, Action> {
         let side_bar = container(self.side_bar());
         let content = container(self.file_contents());
@@ -45,6 +47,11 @@ impl FileExplorerApp {
         let mut file_nodes: Vec<iced::Element<Action>> = Vec::new();
 
         for (index, f) in self.files.iter().enumerate() {
+
+            if !f.matches_filters {
+                continue;
+            }
+
             let file_name_row = text(f.display_name())
                 .shaping(text::Shaping::Advanced)
                 .size(FILE_NAME_FONT_SIZE);
@@ -71,6 +78,9 @@ impl FileExplorerApp {
                         weight: Weight::Bold,
                         ..Font::default()
                     }),
+                text_input("Search file names", &self.filters.file_name_search)
+                    .on_input(Action::DebouncedSearch)
+                    .width(Length::Fill),
                 scrollable(column![
                     back_button,
                     iced::widget::Column::from_vec(file_nodes).width(Length::Fill)
