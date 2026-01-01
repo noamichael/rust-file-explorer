@@ -1,14 +1,15 @@
-use crate::app::{Action, FileExplorerApp, PaneContent};
+use crate::app::{Action, ContextMenuAction, FileExplorerApp, PaneContent};
 
-use iced::Alignment;
 use iced::widget::text::{Rich, Span};
-use iced::widget::{pane_grid, scrollable, text_input};
+use iced::widget::{center, mouse_area, opaque, pane_grid, rule, scrollable, stack, text_input};
+use iced::{Alignment, Element, Theme, border};
 use iced::{
     Background, Color, Font, Length, Task,
     font::Weight,
     padding,
     widget::{button, column, container, row, space, span, text},
 };
+use iced_aw::ContextMenu;
 
 use syntect::easy::HighlightLines;
 
@@ -34,7 +35,14 @@ impl FileExplorerApp {
         .height(Length::Fill)
         .on_resize(10, Action::PanesResized);
 
-        row![grid].spacing(20.0).into()
+        let app_content = row![grid].spacing(20.0).into();
+
+        if self.file_info_modal_open {
+            let modal_content = self.file_info_modal_content();
+            modal(app_content, modal_content, Action::CloseFileInfoModal)
+        } else {
+            app_content
+        }
     }
 
     fn side_bar(&self) -> iced::Element<'_, Action> {
@@ -64,13 +72,14 @@ impl FileExplorerApp {
                 None => false,
             };
 
-            file_nodes.push(
+            file_nodes.push(add_context_menu_to(
+                index,
                 button(file_name_row)
                     .style(file_node_style(is_selected))
                     .on_press(Action::OpenFile(index))
                     .width(Length::Fill)
                     .into(),
-            );
+            ));
         }
 
         let left_border = container(text(""))
@@ -228,6 +237,51 @@ impl FileExplorerApp {
 
         column!(result).into()
     }
+
+    pub fn file_info_modal_content(&self) -> iced::Element<'_, Action> {
+        match &self.file_info_modal_node {
+            Some(file) => {
+                // Placeholder content for the file info modal
+                container(
+                    column![
+                        text(file.display_name()).size(HEADING_FONT_SIZE).font(Font {
+                            weight: Weight::Bold,
+                            ..Font::default()
+                        }),
+                        labeled("Type", if file.is_dir {
+                            "Directory"
+                        } else {
+                            "File"
+                        }),
+                        labeled("Path", &file.absolute_path),
+                        labeled("Size", &file.file_size),
+                        labeled("Created At", &file.created_at),
+                        labeled("Modified At", &file.modified_at),
+                        labeled("Accessed At", &file.accessed_at),
+                        rule::horizontal(2.0),
+                        row![
+                            // Fill space to push the button
+                            space::horizontal().width(Length::Fill),
+                            button("Close")
+                            .on_press(Action::CloseFileInfoModal)
+                            .style(button::primary)
+                        ].align_y(Alignment::Center)
+                    ]
+                    .spacing(20.0)
+                    .padding(20.0),
+                )
+                .style(|style: &Theme |{
+                    container::Style {
+                        background: Some(style.extended_palette().background.base.color.into()),
+                        border: border::rounded(5.0),
+                        ..Default::default()
+                    }
+                })
+                .into()
+            }
+            None => column![text("No file info available")].into(),
+        }
+    }
 }
 
 fn file_node_style(selected: bool) -> impl Fn(&iced::Theme, button::Status) -> button::Style {
@@ -256,4 +310,98 @@ fn file_node_style(selected: bool) -> impl Fn(&iced::Theme, button::Status) -> b
             }
         }
     }
+}
+
+fn add_context_menu_to(
+    index: usize,
+    element: iced::Element<'_, Action>,
+) -> iced::Element<'_, Action> {
+    ContextMenu::new(element, move || {
+        // Create a container for the context menu
+        container(column![
+            button(text("Open"))
+                .style(context_menu_button_style())
+                .on_press(Action::OpenFile(index)),
+            //rule::horizontal(2.0),
+            button(text("Get Info"))
+                .style(context_menu_button_style())
+                .on_press(Action::OpenContextMenu(
+                    ContextMenuAction::OpenFileInfoModal(index)
+                ))
+        ])
+        .padding(10.0)
+        // Style the context menu background
+        .style(|theme: &Theme| {
+            return container::Style {
+                background: Some(theme.extended_palette().background.weak.color.into()),
+                border: border::rounded(2.0),
+                ..Default::default()
+            };
+        })
+        .into()
+    })
+    .into()
+}
+
+fn context_menu_button_style() -> impl Fn(&iced::Theme, button::Status) -> button::Style {
+    // This is a workaround for a bug in iced_aw where the context menu button style is not applied correctly
+    // The status is always set to Disabled, so we have to manually handle the different states
+    // See issue:
+    // https://github.com/iced-rs/iced_aw/issues/378
+    move |theme: &iced::Theme, _status: button::Status| {
+        // Get the base theme color
+        let palette = theme.extended_palette();
+        button::Style {
+            background: Some(Color::TRANSPARENT.into()),
+            text_color: Color::from_rgb(
+                palette.background.base.text.r,
+                palette.background.base.text.g,
+                palette.background.base.text.b,
+            ),
+            ..button::Style::default()
+        }
+    }
+}
+
+fn modal<'a, Message>(
+    base: impl Into<Element<'a, Message>>,
+    content: impl Into<Element<'a, Message>>,
+    on_blur: Message,
+) -> Element<'a, Message>
+where
+    Message: Clone + 'a,
+{
+    stack![
+        base.into(),
+        opaque(
+            mouse_area(center(opaque(content)).style(|_theme| {
+                container::Style {
+                    background: Some(
+                        Color {
+                            a: 0.8,
+                            ..Color::BLACK
+                        }
+                        .into(),
+                    ),
+                    ..container::Style::default()
+                }
+            }).padding(20.0))
+            .on_press(on_blur)
+        )
+    ]
+    .into()
+}
+
+fn labeled<'a>(label: &'a str, value: &'a str) -> iced::Element<'a, Action> {
+    row![
+        text(format!("{}: ", label))
+            .font(Font {
+                weight: Weight::Bold,
+                ..Font::default()
+            })
+            .size(FILE_NAME_FONT_SIZE),
+        text(value).size(FILE_NAME_FONT_SIZE)
+    ]
+    .spacing(10.0)
+    .into()
 }

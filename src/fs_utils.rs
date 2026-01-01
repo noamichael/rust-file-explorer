@@ -3,6 +3,12 @@ use std::{
     path::Path,
 };
 
+use chrono::DateTime;
+use chrono::offset::Local;
+use humansize::{DECIMAL, format_size};
+
+const DATE_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+
 /// Represents a node in the file menu
 #[derive(Clone, Debug)]
 pub struct FileNode {
@@ -17,6 +23,14 @@ pub struct FileNode {
     /// A flag to indicate if this FileNode should be rendered
     /// as it matches the file filters
     pub matches_filters: bool,
+    // the size of the file as a human-readable string
+    pub file_size: String,
+    // When the file was created
+    pub created_at: String,
+    // When the file was last modified
+    pub modified_at: String,
+    // When the file was last accessed
+    pub accessed_at: String,
 }
 
 /// File Node methods
@@ -39,12 +53,24 @@ impl FileNode {
             .parent()
             .map(|p| String::from(p.to_str().unwrap()));
 
+        let file_size = format_size(metadata.len(), DECIMAL);
+        let created_system_time = metadata.created()?;
+        let accessed_system_time = metadata.accessed()?;
+        let modified_system_time = metadata.modified()?;
+        let created_at: DateTime<Local> = created_system_time.into();
+        let accessed_at: DateTime<Local> = accessed_system_time.into();
+        let modified_at: DateTime<Local> = modified_system_time.into();
+
         Ok(FileNode {
             file_name,
             absolute_path: String::from(absolute_path.to_str().unwrap()),
             parent_folder,
             is_dir: metadata.is_dir(),
             matches_filters: true,
+            file_size,
+            created_at: created_at.format(DATE_FORMAT).to_string(),
+            modified_at: modified_at.format(DATE_FORMAT).to_string(),
+            accessed_at: accessed_at.format(DATE_FORMAT).to_string(),
         })
     }
 
