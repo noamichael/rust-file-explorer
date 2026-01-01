@@ -2,6 +2,7 @@ use iced::{
     Task,
     widget::pane_grid::{self},
 };
+use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 
 use crate::fs_utils::{FileNode, determine_file_type, read_dir};
 use std::{
@@ -30,6 +31,8 @@ pub struct FileExplorerApp {
     pub system_color_mode: dark_light::Mode,
     /// The state of the pane grid
     pub panes: pane_grid::State<PaneContent>,
+    /// Syntax highlighting data
+    pub highlighting: Highlighting,
 }
 
 /// The actions that can occur for the application. During the `update` function,
@@ -65,6 +68,12 @@ pub struct Filters {
 pub enum PaneContent {
     Sidebar,
     Content,
+}
+
+#[derive(Debug)]
+pub struct Highlighting {
+    pub syntax_set: syntect::parsing::SyntaxSet,
+    pub theme_set: syntect::highlighting::ThemeSet,
 }
 
 /// The default methods
@@ -118,6 +127,10 @@ impl Default for FileExplorerApp {
             },
             system_color_mode,
             panes,
+            highlighting: Highlighting {
+                syntax_set: SyntaxSet::load_defaults_newlines(),
+                theme_set: ThemeSet::load_defaults(),
+            },
         }
     }
 }

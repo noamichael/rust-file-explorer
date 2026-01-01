@@ -11,8 +11,6 @@ use iced::{
 };
 
 use syntect::easy::HighlightLines;
-use syntect::util::LinesWithEndings;
-use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 
 const HEADING_FONT_SIZE: f32 = 32.0;
 const FILE_NAME_FONT_SIZE: f32 = 24.0;
@@ -97,7 +95,8 @@ impl FileExplorerApp {
                         text_input("Search file names", &self.filters.file_name_search)
                             .on_input(Action::DebouncedSearch)
                             .width(Length::Fill),
-                    ].padding(5.0),
+                    ]
+                    .padding(5.0),
                     // File nodes
                     scrollable(column![
                         back_button,
@@ -115,8 +114,9 @@ impl FileExplorerApp {
         let result = match &self.opened_file {
             Some(opened_file) => match &self.opened_file_contents {
                 Ok(contents) => {
-                    let ps = SyntaxSet::load_defaults_newlines();
-                    let ts = ThemeSet::load_defaults();
+                    let ps = &self.highlighting.syntax_set;
+                    let ts = &self.highlighting.theme_set;
+
                     let syntax = ps
                         .find_syntax_by_extension(
                             &self.opened_file_type.clone().unwrap_or(String::from("txt")),
@@ -130,8 +130,12 @@ impl FileExplorerApp {
                     };
                     let mut h = HighlightLines::new(syntax, theme);
 
+                    let lines = contents.lines().collect::<Vec<&str>>();
+                    let line_number_digits = lines.len().to_string().len();
+
                     let highlighted = iced::widget::Column::with_children(
-                        LinesWithEndings::from(contents)
+                        lines
+                            .iter()
                             .enumerate()
                             .map(|(index, line)| {
                                 let spans = h
@@ -140,10 +144,10 @@ impl FileExplorerApp {
                                     .iter()
                                     .map(|(style, text)| {
                                         span(*text)
-                                            .color(Color::from_rgb(
-                                                style.foreground.r as f32 / 255.0,
-                                                style.foreground.g as f32 / 255.0,
-                                                style.foreground.b as f32 / 255.0,
+                                            .color(Color::from_rgb8(
+                                                style.foreground.r,
+                                                style.foreground.g,
+                                                style.foreground.b,
                                             ))
                                             .font(Font::MONOSPACE)
                                     })
@@ -151,7 +155,12 @@ impl FileExplorerApp {
 
                                 let rich = Rich::with_spans(spans);
                                 row![
-                                    text(format!("{:4}", index + 1)).font(Font::MONOSPACE),
+                                    text(format!(
+                                        "{:width$}",
+                                        index + 1,
+                                        width = line_number_digits
+                                    ))
+                                    .font(Font::MONOSPACE),
                                     space::vertical().width(Length::Fixed(15.0)),
                                     rich
                                 ]
