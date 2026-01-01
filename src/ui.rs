@@ -1,10 +1,12 @@
 use crate::app::{Action, FileExplorerApp, PaneContent};
 
+use iced::Alignment;
 use iced::widget::text::{Rich, Span};
 use iced::widget::{pane_grid, scrollable, text_input};
 use iced::{
     Background, Color, Font, Length, Task,
     font::Weight,
+    padding,
     widget::{button, column, container, row, space, span, text},
 };
 
@@ -23,21 +25,6 @@ impl FileExplorerApp {
     pub fn view(&self) -> iced::Element<'_, Action> {
         let grid = pane_grid::PaneGrid::new(&self.panes, |_pane, pc, _focus| {
             let side_bar = container(self.side_bar());
-            // TODO: Finish this
-            // .style(|theme| {
-            //     let palette = theme.extended_palette();
-            //     container::Style {
-            //         text_color: Some(palette.background.base.text),
-            //         background: Some(Background::Color(palette.background.base.color)),
-            //         border: iced::Border {
-            //             color: Color::from_rgb(1.0, 0.0, 0.0),
-            //             width: 1.0,
-            //             radius: 0.into(),
-            //         },
-            //         shadow: Shadow::default(),
-            //         snap: false,
-            //     }
-            // });
             let content = container(self.file_contents());
 
             pane_grid::Content::new(match pc {
@@ -47,7 +34,6 @@ impl FileExplorerApp {
         })
         .width(Length::Fill)
         .height(Length::Fill)
-        .spacing(10)
         .on_resize(10, Action::PanesResized);
 
         row![grid].spacing(20.0).into()
@@ -89,21 +75,36 @@ impl FileExplorerApp {
             );
         }
 
+        let left_border = container(text(""))
+            .width(2.0) // The "border" width
+            .height(Length::Fill)
+            .style(|theme: &iced::Theme| container::Style {
+                background: Some(theme.extended_palette().background.neutral.color.into()),
+                ..Default::default()
+            });
+
         container(
-            column![
-                text(self.opened_dir.display_name())
-                    .size(HEADING_FONT_SIZE)
-                    .font(Font {
-                        weight: Weight::Bold,
-                        ..Font::default()
-                    }),
-                text_input("Search file names", &self.filters.file_name_search)
-                    .on_input(Action::DebouncedSearch)
-                    .width(Length::Fill),
-                scrollable(column![
-                    back_button,
-                    iced::widget::Column::from_vec(file_nodes).width(Length::Fill)
-                ])
+            row![
+                column![
+                    // Directory name and search bar
+                    column![
+                        text(self.opened_dir.display_name())
+                            .size(HEADING_FONT_SIZE)
+                            .font(Font {
+                                weight: Weight::Bold,
+                                ..Font::default()
+                            }),
+                        text_input("Search file names", &self.filters.file_name_search)
+                            .on_input(Action::DebouncedSearch)
+                            .width(Length::Fill),
+                    ].padding(5.0),
+                    // File nodes
+                    scrollable(column![
+                        back_button,
+                        iced::widget::Column::from_vec(file_nodes).width(Length::Fill)
+                    ]),
+                ],
+                column![left_border]
             ]
             .width(Length::Fill),
         )
@@ -159,27 +160,43 @@ impl FileExplorerApp {
                             .collect::<Vec<_>>(),
                     );
 
+                    let top_border = container(text(""))
+                        .height(2.0) // The "border" width
+                        .width(Length::Fill)
+                        .style(|theme: &iced::Theme| container::Style {
+                            background: Some(
+                                theme.extended_palette().background.neutral.color.into(),
+                            ),
+                            ..Default::default()
+                        });
+
                     column![
                         row![
-                            text(&opened_file.file_name)
-                                .size(HEADING_FONT_SIZE)
-                                .font(Font {
+                            // Opened file name
+                            container(text(&opened_file.file_name).size(HEADING_FONT_SIZE).font(
+                                Font {
                                     weight: Weight::Bold,
                                     ..Font::default()
-                                }),
+                                }
+                            ))
+                            .padding(padding::left(5.0)),
+                            // Empty spave to push the close button to the right
                             space::horizontal().width(Length::Fill),
+                            // File Actions
                             container(
                                 button("Close")
                                     .on_press(Action::CloseFile)
                                     .style(button::secondary)
                             )
-                            .padding(10.0)
-                        ],
+                            .padding(padding::right(5.0))
+                        ]
+                        .align_y(Alignment::Center),
+                        top_border,
                         scrollable(highlighted)
                             .width(Length::Fill)
                             .height(Length::Fill)
                     ]
-                    .spacing(20.0)
+                    .spacing(10.0)
                 }
                 Err(e) => {
                     column![
