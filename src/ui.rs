@@ -1,7 +1,7 @@
 use crate::app::{Action, FileExplorerApp};
 
+use iced::widget::scrollable;
 use iced::widget::text::{Rich, Span};
-use iced::widget::{scrollable};
 use iced::{
     Background, Color, Font, Length,
     font::Weight,
@@ -20,41 +20,25 @@ impl FileExplorerApp {
         let _ = self.post_update(action);
     }
     pub fn view(&self) -> iced::Element<'_, Action> {
-        let selected_file_theme = |selected: bool| {
-            move |theme: &iced::Theme, status: button::Status| {
-                // Get the base theme color
-                let palette = theme.extended_palette();
-                // If the file is selected, use the primary button style
-                if selected {
-                    button::primary(theme, status)
-                } else {
-                    // If not selected, use a custom style
-                    match status {
-                        // Normal state - do not add any backgroun and use default text
-                        button::Status::Active | button::Status::Pressed => button::Style {
-                            background: Some(Background::Color(palette.background.base.color)),
-                            text_color: Color::from_rgb(
-                                palette.background.base.text.r,
-                                palette.background.base.text.g,
-                                palette.background.base.text.b,
-                            ),
-                            ..button::Style::default()
-                        },
-                        // Hovered and disabled states use the primary style
-                        button::Status::Hovered => button::primary(theme, status),
-                        button::Status::Disabled => button::primary(theme, status),
-                    }
-                }
-            }
-        };
+        let side_bar = container(self.side_bar());
+        let content = container(self.file_contents());
 
+        row![
+            side_bar.width(Length::FillPortion(1)),
+            content.width(Length::FillPortion(4)),
+        ]
+        .spacing(20.0)
+        .into()
+    }
+
+    fn side_bar(&self) -> iced::Element<'_, Action> {
         let back_button: iced::Element<Action> = button(row![
             text("⬆️ ../")
                 .shaping(text::Shaping::Advanced)
                 .size(FILE_NAME_FONT_SIZE)
         ])
         .on_press(Action::GoBack())
-        .style(selected_file_theme(false))
+        .style(file_node_style(false))
         .width(Length::Fill)
         .into();
 
@@ -72,35 +56,28 @@ impl FileExplorerApp {
 
             file_nodes.push(
                 button(file_name_row)
-                    .style(selected_file_theme(is_selected))
+                    .style(file_node_style(is_selected))
                     .on_press(Action::OpenFile(index))
                     .width(Length::Fill)
                     .into(),
             );
         }
 
-        let content = container(self.file_contents());
-
-        row![
-            container(
-                column![
-                    text(self.opened_dir.display_name())
-                        .size(HEADING_FONT_SIZE)
-                        .font(Font {
-                            weight: Weight::Bold,
-                            ..Font::default()
-                        }),
-                    scrollable(column![
-                        back_button,
-                        iced::widget::Column::from_vec(file_nodes).width(Length::Fill)
-                    ])
-                ]
-                .width(Length::Fill),
-            )
-            .width(Length::FillPortion(1)),
-            content.width(Length::FillPortion(4)),
-        ]
-        .spacing(20.0)
+        container(
+            column![
+                text(self.opened_dir.display_name())
+                    .size(HEADING_FONT_SIZE)
+                    .font(Font {
+                        weight: Weight::Bold,
+                        ..Font::default()
+                    }),
+                scrollable(column![
+                    back_button,
+                    iced::widget::Column::from_vec(file_nodes).width(Length::Fill)
+                ])
+            ]
+            .width(Length::Fill),
+        )
         .into()
     }
 
@@ -111,7 +88,9 @@ impl FileExplorerApp {
                     let ps = SyntaxSet::load_defaults_newlines();
                     let ts = ThemeSet::load_defaults();
                     let syntax = ps
-                        .find_syntax_by_extension(&self.opened_file_type.clone().unwrap_or(String::from("txt")))
+                        .find_syntax_by_extension(
+                            &self.opened_file_type.clone().unwrap_or(String::from("txt")),
+                        )
                         .or(ps.find_syntax_by_extension("txt"))
                         .unwrap();
                     let theme = match &self.system_color_mode {
@@ -125,7 +104,8 @@ impl FileExplorerApp {
                         LinesWithEndings::from(contents)
                             .enumerate()
                             .map(|(index, line)| {
-                                let spans = h.highlight_line(line, &ps)
+                                let spans = h
+                                    .highlight_line(line, &ps)
                                     .unwrap()
                                     .iter()
                                     .map(|(style, text)| {
@@ -175,9 +155,9 @@ impl FileExplorerApp {
                 Err(e) => {
                     column![
                         text(format!("Error: {}", e))
-                        .size(FILE_NAME_FONT_SIZE)
-                        .font(Font::MONOSPACE)
-                        .color(Color::from_rgb(1.0, 0.0, 0.0))
+                            .size(FILE_NAME_FONT_SIZE)
+                            .font(Font::MONOSPACE)
+                            .color(Color::from_rgb(1.0, 0.0, 0.0))
                     ]
                 }
             },
@@ -193,5 +173,32 @@ impl FileExplorerApp {
 
         column!(result).into()
     }
+}
 
+fn file_node_style(selected: bool) -> impl Fn(&iced::Theme, button::Status) -> button::Style {
+    move |theme: &iced::Theme, status: button::Status| {
+        // Get the base theme color
+        let palette = theme.extended_palette();
+        // If the file is selected, use the primary button style
+        if selected {
+            button::primary(theme, status)
+        } else {
+            // If not selected, use a custom style
+            match status {
+                // Normal state - do not add any backgroun and use default text
+                button::Status::Active | button::Status::Pressed => button::Style {
+                    background: Some(Background::Color(palette.background.base.color)),
+                    text_color: Color::from_rgb(
+                        palette.background.base.text.r,
+                        palette.background.base.text.g,
+                        palette.background.base.text.b,
+                    ),
+                    ..button::Style::default()
+                },
+                // Hovered and disabled states use the primary style
+                button::Status::Hovered => button::primary(theme, status),
+                button::Status::Disabled => button::primary(theme, status),
+            }
+        }
+    }
 }
