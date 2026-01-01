@@ -1,10 +1,9 @@
-use crate::app::{Action, FileExplorerApp};
+use crate::app::{Action, FileExplorerApp, PaneContent};
 
-use iced::Task;
-use iced::widget::{scrollable, text_input};
 use iced::widget::text::{Rich, Span};
+use iced::widget::{pane_grid, scrollable, text_input};
 use iced::{
-    Background, Color, Font, Length,
+    Background, Color, Font, Length, Task,
     font::Weight,
     widget::{button, column, container, row, space, span, text},
 };
@@ -22,15 +21,36 @@ impl FileExplorerApp {
     }
 
     pub fn view(&self) -> iced::Element<'_, Action> {
-        let side_bar = container(self.side_bar());
-        let content = container(self.file_contents());
+        let grid = pane_grid::PaneGrid::new(&self.panes, |_pane, pc, _focus| {
+            let side_bar = container(self.side_bar());
+            // TODO: Finish this
+            // .style(|theme| {
+            //     let palette = theme.extended_palette();
+            //     container::Style {
+            //         text_color: Some(palette.background.base.text),
+            //         background: Some(Background::Color(palette.background.base.color)),
+            //         border: iced::Border {
+            //             color: Color::from_rgb(1.0, 0.0, 0.0),
+            //             width: 1.0,
+            //             radius: 0.into(),
+            //         },
+            //         shadow: Shadow::default(),
+            //         snap: false,
+            //     }
+            // });
+            let content = container(self.file_contents());
 
-        row![
-            side_bar.width(Length::FillPortion(1)),
-            content.width(Length::FillPortion(4)),
-        ]
-        .spacing(20.0)
-        .into()
+            pane_grid::Content::new(match pc {
+                PaneContent::Sidebar => side_bar,
+                PaneContent::Content => content,
+            })
+        })
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .on_resize(10, Action::PanesResized);
+
+        row![grid].spacing(20.0).into()
     }
 
     fn side_bar(&self) -> iced::Element<'_, Action> {
@@ -47,7 +67,6 @@ impl FileExplorerApp {
         let mut file_nodes: Vec<iced::Element<Action>> = Vec::new();
 
         for (index, f) in self.files.iter().enumerate() {
-
             if !f.matches_filters {
                 continue;
             }

@@ -1,4 +1,7 @@
-use iced::Task;
+use iced::{
+    Task,
+    widget::pane_grid::{self},
+};
 
 use crate::fs_utils::{FileNode, determine_file_type, read_dir};
 use std::{
@@ -25,6 +28,8 @@ pub struct FileExplorerApp {
     pub filters: Filters,
     /// Whether the application is in dark mode
     pub system_color_mode: dark_light::Mode,
+    /// The state of the pane grid
+    pub panes: pane_grid::State<PaneContent>,
 }
 
 /// The actions that can occur for the application. During the `update` function,
@@ -43,6 +48,8 @@ pub enum Action {
     DebouncedSearch(String),
     // Search for a file by name
     SearchByFilename(String),
+    // An action for when the panes are resized
+    PanesResized(pane_grid::ResizeEvent),
 }
 
 /// The Filters used to search the opened file tree
@@ -52,6 +59,12 @@ pub struct Filters {
     pub file_name_search: String,
     /// The abort handler for the current operation
     pub file_filter_handle: Option<iced::task::Handle>,
+}
+
+#[derive(Debug)]
+pub enum PaneContent {
+    Sidebar,
+    Content,
 }
 
 /// The default methods
@@ -86,6 +99,13 @@ impl Default for FileExplorerApp {
 
         println!("Detected system color mode: {:?}", system_color_mode);
 
+        let panes = pane_grid::State::with_configuration(pane_grid::Configuration::Split {
+            axis: pane_grid::Axis::Vertical,
+            ratio: 0.2,
+            a: Box::new(pane_grid::Configuration::Pane(PaneContent::Sidebar)),
+            b: Box::new(pane_grid::Configuration::Pane(PaneContent::Content)),
+        });
+
         FileExplorerApp {
             files: nodes,
             opened_dir: opened_dir.ok().unwrap(),
@@ -97,6 +117,7 @@ impl Default for FileExplorerApp {
                 file_filter_handle: None,
             },
             system_color_mode,
+            panes,
         }
     }
 }
@@ -147,12 +168,12 @@ impl FileExplorerApp {
             }
             // Runs when we search for a file by name
             Action::DebouncedSearch(search_file_name) => {
-
                 // Store the search in the state
                 self.filters.file_name_search = search_file_name.clone();
 
                 // Abort any existing filter operation
-                let _ = self.filters
+                let _ = self
+                    .filters
                     .file_filter_handle
                     .as_ref()
                     .map(|abort_handler| abort_handler.abort());
@@ -182,6 +203,11 @@ impl FileExplorerApp {
                         .contains(&search_file_name.trim().to_lowercase());
                 }
 
+                Task::none()
+            }
+            // Runs when the panes are resized
+            Action::PanesResized(event) => {
+                self.panes.resize(event.split, event.ratio);
                 Task::none()
             }
         }
