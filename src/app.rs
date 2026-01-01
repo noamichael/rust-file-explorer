@@ -2,6 +2,7 @@ use iced::{
     Task,
     widget::pane_grid::{self},
 };
+use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 
 use crate::fs_utils::{FileNode, determine_file_type, read_dir};
 use std::{
@@ -30,6 +31,12 @@ pub struct FileExplorerApp {
     pub system_color_mode: dark_light::Mode,
     /// The state of the pane grid
     pub panes: pane_grid::State<PaneContent>,
+    /// Syntax highlighting data
+    pub highlighting: Highlighting,
+    // The file node for the file info modal (if open)
+    pub file_info_modal_node: Option<FileNode>,
+    /// A boolean to track if the file info modal is open
+    pub file_info_modal_open: bool,
 }
 
 /// The actions that can occur for the application. During the `update` function,
@@ -50,7 +57,16 @@ pub enum Action {
     SearchByFilename(String),
     // An action for when the panes are resized
     PanesResized(pane_grid::ResizeEvent),
+    // An action for when the context menu is opened on a file
+    OpenContextMenu(ContextMenuAction),
+    // An action for when the file info modal is closed
+    CloseFileInfoModal,
 }
+#[derive(Debug, Clone)]
+pub enum ContextMenuAction {
+    OpenFileInfoModal(usize),
+}
+
 
 /// The Filters used to search the opened file tree
 #[derive(Debug)]
@@ -65,6 +81,12 @@ pub struct Filters {
 pub enum PaneContent {
     Sidebar,
     Content,
+}
+
+#[derive(Debug)]
+pub struct Highlighting {
+    pub syntax_set: syntect::parsing::SyntaxSet,
+    pub theme_set: syntect::highlighting::ThemeSet,
 }
 
 /// The default methods
@@ -118,6 +140,12 @@ impl Default for FileExplorerApp {
             },
             system_color_mode,
             panes,
+            highlighting: Highlighting {
+                syntax_set: SyntaxSet::load_defaults_newlines(),
+                theme_set: ThemeSet::load_defaults(),
+            },
+            file_info_modal_node: None,
+            file_info_modal_open: false,
         }
     }
 }
@@ -208,6 +236,22 @@ impl FileExplorerApp {
             // Runs when the panes are resized
             Action::PanesResized(event) => {
                 self.panes.resize(event.split, event.ratio);
+                Task::none()
+            }
+            Action::OpenContextMenu(context_menu_action) => {
+                match context_menu_action {
+                    ContextMenuAction::OpenFileInfoModal(index) => {
+                        println!("Opening File Info Model for file at index: {}", index);
+                        let file_node = self.files.get(index).cloned();
+                        self.file_info_modal_node = file_node;
+                        self.file_info_modal_open = true;
+                    }
+                }
+                Task::none()
+            }
+            Action::CloseFileInfoModal => {
+                self.file_info_modal_open = false;
+                self.file_info_modal_node = None;
                 Task::none()
             }
         }
